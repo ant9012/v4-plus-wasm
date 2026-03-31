@@ -54,6 +54,12 @@ bool bilinearScaling = false;
 
 int InitRenderDevice()
 {
+	#ifdef __EMSCRIPTEN__
+    // fixes a bug, tho - menus will be a bit pixelated :(
+    // (if engine scales > 2, the game wont render at all)
+    if (Engine.windowScale > 2)
+        Engine.windowScale = 2;
+#endif
     char gameTitle[0x40];
 
     sprintf(gameTitle, "%s%s", Engine.gameWindowText, Engine.usingDataFile_Config ? "" : "");
@@ -207,7 +213,11 @@ int InitRenderDevice()
 #if RETRO_PLATFORM != RETRO_ANDROID && RETRO_PLATFORM != RETRO_OSX
 #ifndef __EMSCRIPTEN__
     GLenum err = glewInit();
-    if (err != GLEW_OK && err != GLEW_ERROR_NO_GLX_DISPLAY) {
+    if (err != GLEW_OK && err != #ifdef __EMSCRIPTEN__
+    4 // look.
+#else
+    GLEW_ERROR_NO_GLX_DISPLAY
+#endif) {
         PrintLog("glew init error:");
         PrintLog((const char *)glewGetErrorString(err));
         return false;
@@ -254,7 +264,12 @@ int InitRenderDevice()
 
     float lightAmbient[4] = { 2.0, 2.0, 2.0, 1.0 };
     float lightDiffuse[4] = { 1.0, 1.0, 1.0, 1.0 };
-    float lightPos[4]     = { 0.0, 0.0, 0.0, 1.0 };
+    #ifdef __EMSCRIPTEN__
+    // emscripten's legacy gl lighting was being weird, so here's some magic values
+    float lightPos[4] = { 0.35, 0.0, -1.0, 0.0 };
+#else
+    float lightPos[4] = { 0.0, 0.0, 0.0, 1.0 };
+#endif
 
     glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);

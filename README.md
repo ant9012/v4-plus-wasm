@@ -200,7 +200,7 @@ Follow the android build instructions [here.](./dependencies/android/README.md)
 
 Compiling is as simple as typing the following in the root repository directory:
 ```
-cmake -B build
+emcmake cmake -B build
 cmake --build build --config release
 ```
 

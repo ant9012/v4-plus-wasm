@@ -92,7 +92,7 @@ typedef unsigned int uint;
 #define RETRO_PLATFORM   (RETRO_ANDROID)
 #define RETRO_DEVICETYPE (RETRO_MOBILE)
 #include <jni.h>
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__EMSCRIPTEN__)
 #define RETRO_PLATFORM   (RETRO_LINUX)
 #define RETRO_DEVICETYPE (RETRO_STANDARD)
 #else
@@ -464,6 +464,7 @@ public:
 
     void Init();
     void Run();
+    void RunFrame();
 
     bool LoadGameConfig(const char *filepath);
 #if RETRO_USE_MOD_LOADER

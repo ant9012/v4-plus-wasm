@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="RSDKv4-sdl1" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug x64">
+				<Option output="../build/x64/Debug/SDL1/RSDKv4_64" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../build/x64/Debug/Intermediate/SDL1/" />
+				<Option deps_output="../build/x64/Debug/SDL1/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-DRETRO_USE_SDL1" />
+					<Add option="-DRETRO_USING_OPENGL=0" />
+					<Add option="-D_CRT_SECURE_NO_WARNINGS" />
+					<Add option="-DUSE_SW_REN" />
+					<Add option="-D_DEBUG" />
+					<Add option="-D_CONSOLE" />
+					<Add directory="../RSDKv4/" />
+					<Add directory="../RSDKv4/NativeObjects/" />
+					<Add directory="../dependencies/all/asio/asio/include/" />
+					<Add directory="../dependencies/all/stb-image/" />
+					<Add directory="../dependencies/all/tinyxml2/" />
+					<Add directory="../dependencies/windows/SDL2/include/" />
+					<Add directory="../dependencies/windows/libogg/include/" />
+					<Add directory="../dependencies/windows/libvorbis/include/" />
+					<Add directory="../dependencies/windows/glew/include/" />
+				</Compiler>
+				<Linker>
+					<Add library="SDL2.lib" />
+					<Add library="SDL2main.lib" />
+					<Add library="libogg.lib" />
+					<Add library="libvorbis_static.lib" />
+					<Add library="libvorbisfile_static.lib" />
+					<Add library="Opengl32.lib" />
+					<Add library="glu32.lib" />
+					<Add library="glew32.lib" />
+					<Add library="Shell32.lib" />
+					<Add directory="../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/" />
+					<Add directory="../dependencies/windows/libvorbis/win32/VS2010/x64/Debug/" />
+					<Add directory="../dependencies/windows/libogg/win32/VS2015/x64/Debug/" />
+					<Add directory="../dependencies/windows/glew/lib/Release/x64/" />
+				</Linker>
+				<ExtraCommands>
+					<Add after='copy /Y &quot;../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/SDL2.dll&quot; &quot;../build/x64/Debug/SDL1/&quot;&#x0A;copy /Y &quot;../dependencies/windows/glew/bin/Release/x64/glew32.dll&quot; &quot;../build/x64/Debug/SDL1/&quot;' />
+				</ExtraCommands>
+			</Target>
+			<Target title="Release x64">
+				<Option output="../build/x64/Release/SDL1/RSDKv4_64" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../build/x64/Release/Intermediate/SDL1/" />
+				<Option deps_output="../build/x64/Release/SDL1/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-DRETRO_USE_SDL1" />
+					<Add option="-DRETRO_USING_OPENGL=0" />
+					<Add option="-DUSE_SW_REN" />
+					<Add option="-D_CRT_SECURE_NO_WARNINGS" />
+					<Add option="-DNDEBUG" />
+					<Add option="-D_CONSOLE" />
+					<Add directory="../RSDKv4/" />
+					<Add directory="../RSDKv4/NativeObjects/" />
+					<Add directory="../dependencies/all/asio/asio/include/" />
+					<Add directory="../dependencies/all/stb-image/" />
+					<Add directory="../dependencies/all/tinyxml2/" />
+					<Add directory="../dependencies/windows/SDL2/include/" />
+					<Add directory="../dependencies/windows/libogg/include/" />
+					<Add directory="../dependencies/windows/libvorbis/include/" />
+					<Add directory="../dependencies/windows/glew/include/" />
+				</Compiler>
+				<Linker>
+					<Add library="SDL2.lib" />
+					<Add library="SDL2main.lib" />
+					<Add library="libogg.lib" />
+					<Add library="libvorbis_static.lib" />
+					<Add library="libvorbisfile_static.lib" />
+					<Add library="Opengl32.lib" />
+					<Add library="glu32.lib" />
+					<Add library="glew32.lib" />
+					<Add library="Shell32.lib" />
+					<Add directory="../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/" />
+					<Add directory="../dependencies/windows/libvorbis/win32/VS2010/x64/Release/" />
+					<Add directory="../dependencies/windows/libogg/win32/VS2015/x64/Release/" />
+					<Add directory="../dependencies/windows/glew/lib/Release/x64/" />
+				</Linker>
+				<ExtraCommands>
+					<Add after='copy /Y &quot;../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/SDL2.dll&quot; &quot;../build/x64/Release/SDL1/&quot;&#x0A;copy /Y &quot;../dependencies/windows/glew/bin/Release/x64/glew32.dll&quot; &quot;../build/x64/Release/SDL1/&quot;' />
+				</ExtraCommands>
+			</Target>
+			<Target title="Release Win32">
+				<Option output="../build/Win32/Release/SDL1/RSDKv4" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../build/Win32/Release/Intermediate/SDL1/" />
+				<Option deps_output="../build/Win32/Release/SDL1/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-DRETRO_USE_SDL1" />
+					<Add option="-DRETRO_USING_OPENGL=0" />
+					<Add option="-D_CRT_SECURE_NO_WARNINGS" />
+					<Add option="-DUSE_SW_REN" />
+					<Add option="-DWIN32" />
+					<Add option="-DNDEBUG" />
+					<Add option="-D_CONSOLE" />
+					<Add directory="../RSDKv4/" />
+					<Add directory="../RSDKv4/NativeObjects/" />
+					<Add directory="../dependencies/all/asio/asio/include/" />
+					<Add directory="../dependencies/all/stb-image/" />
+					<Add directory="../dependencies/all/tinyxml2/" />
+					<Add directory="../dependencies/windows/SDL2/include/" />
+					<Add directory="../dependencies/windows/libogg/include/" />
+					<Add directory="../dependencies/windows/libvorbis/include/" />
+					<Add directory="../dependencies/windows/glew/include/" />
+				</Compiler>
+				<Linker>
+					<Add library="SDL2.lib" />
+					<Add library="SDL2main.lib" />
+					<Add library="libogg.lib" />
+					<Add library="libvorbis_static.lib" />
+					<Add library="libvorbisfile_static.lib" />
+					<Add library="Opengl32.lib" />
+					<Add library="glu32.lib" />
+					<Add library="glew32.lib" />
+					<Add library="Shell32.lib" />
+					<Add directory="../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/" />
+					<Add directory="../dependencies/windows/libvorbis/win32/VS2010/Win32/Release/" />
+					<Add directory="../dependencies/windows/libogg/win32/VS2015/Win32/Release/" />
+					<Add directory="../dependencies/windows/glew/lib/Release/Win32/" />
+				</Linker>
+				<ExtraCommands>
+					<Add after='copy /Y &quot;../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/SDL2.dll&quot; &quot;../build/Win32/Release/SDL1/&quot;&#x0A;copy /Y &quot;../dependencies/windows/glew/bin/Release/Win32/glew32.dll&quot; &quot;../build/Win32/Release/SDL1/&quot;' />
+				</ExtraCommands>
+			</Target>
+			<Target title="Debug Win32">
+				<Option output="../build/Win32/Debug/SDL1/RSDKv4" prefix_auto="1" extension_auto="1" />
+				<Option object_output="../build/Win32/Debug/Intermediate/SDL1/" />
+				<Option deps_output="../build/Win32/Debug/SDL1/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-DRETRO_USE_SDL1" />
+					<Add option="-DRETRO_USING_OPENGL=0" />
+					<Add option="-D_CRT_SECURE_NO_WARNINGS" />
+					<Add option="-DUSE_SW_REN" />
+					<Add option="-DWIN32" />
+					<Add option="-D_DEBUG" />
+					<Add option="-D_CONSOLE" />
+					<Add directory="../RSDKv4/" />
+					<Add directory="../RSDKv4/NativeObjects/" />
+					<Add directory="../dependencies/all/asio/asio/include/" />
+					<Add directory="../dependencies/all/stb-image/" />
+					<Add directory="../dependencies/all/tinyxml2/" />
+					<Add directory="../dependencies/windows/SDL2/include/" />
+					<Add directory="../dependencies/windows/libogg/include/" />
+					<Add directory="../dependencies/windows/libvorbis/include/" />
+					<Add directory="../dependencies/windows/glew/include/" />
+				</Compiler>
+				<Linker>
+					<Add library="SDL2.lib" />
+					<Add library="SDL2main.lib" />
+					<Add library="libogg.lib" />
+					<Add library="libvorbis_static.lib" />
+					<Add library="libvorbisfile_static.lib" />
+					<Add library="Opengl32.lib" />
+					<Add library="glu32.lib" />
+					<Add library="glew32.lib" />
+					<Add library="Shell32.lib" />
+					<Add directory="../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/" />
+					<Add directory="../dependencies/windows/libvorbis/win32/VS2010/Win32/Debug/" />
+					<Add directory="../dependencies/windows/libogg/win32/VS2015/Win32/Debug/" />
+					<Add directory="../dependencies/windows/glew/lib/Release/Win32/" />
+				</Linker>
+				<ExtraCommands>
+					<Add after='copy /Y &quot;../dependencies/windows/SDL2/lib/$(PlatformTargetAsMSBuildArchitecture)/SDL2.dll&quot; &quot;../build/Win32/Debug/SDL1/&quot;&#x0A;copy /Y &quot;../dependencies/windows/glew/bin/Release/Win32/glew32.dll&quot; &quot;../build/Win32/Debug/SDL1/&quot;' />
+				</ExtraCommands>
+			</Target>
+		</Build>
+		<Unit filename="../dependencies/all/tinyxml2/tinyxml2.cpp" />
+		<Unit filename="../dependencies/all/tinyxml2/tinyxml2.h" />
+		<Unit filename="Animation.cpp" />
+		<Unit filename="Animation.hpp" />
+		<Unit filename="Audio.cpp" />
+		<Unit filename="Audio.hpp" />
+		<Unit filename="Collision.cpp" />
+		<Unit filename="Collision.hpp" />
+		<Unit filename="Debug.cpp" />
+		<Unit filename="Debug.hpp" />
+		<Unit filename="Drawing.cpp" />
+		<Unit filename="Drawing.hpp" />
+		<Unit filename="Ini.cpp" />
+		<Unit filename="Ini.hpp" />
+		<Unit filename="Input.cpp" />
+		<Unit filename="Input.hpp" />
+		<Unit filename="Math.cpp" />
+		<Unit filename="Math.hpp" />
+		<Unit filename="ModAPI.cpp" />
+		<Unit filename="ModAPI.hpp" />
+		<Unit filename="NativeObjects/AboutScreen.cpp" />
+		<Unit filename="NativeObjects/AboutScreen.hpp" />
+		<Unit filename="NativeObjects/AchievementDisplay.cpp" />
+		<Unit filename="NativeObjects/AchievementDisplay.hpp" />
+		<Unit filename="NativeObjects/AchievementsButton.cpp" />
+		<Unit filename="NativeObjects/AchievementsButton.hpp" />
+		<Unit filename="NativeObjects/AchievementsMenu.cpp" />
+		<Unit filename="NativeObjects/AchievementsMenu.hpp" />
+		<Unit filename="NativeObjects/BackButton.cpp" />
+		<Unit filename="NativeObjects/BackButton.hpp" />
+		<Unit filename="NativeObjects/CWSplash.cpp" />
+		<Unit filename="NativeObjects/CWSplash.hpp" />
+		<Unit filename="NativeObjects/CreditText.cpp" />
+		<Unit filename="NativeObjects/CreditText.hpp" />
+		<Unit filename="NativeObjects/DialogPanel.cpp" />
+		<Unit filename="NativeObjects/DialogPanel.hpp" />
+		<Unit filename="NativeObjects/FadeScreen.cpp" />
+		<Unit filename="NativeObjects/FadeScreen.hpp" />
+		<Unit filename="NativeObjects/InstructionsScreen.cpp" />
+		<Unit filename="NativeObjects/InstructionsScreen.hpp" />
+		<Unit filename="NativeObjects/LeaderboardsButton.cpp" />
+		<Unit filename="NativeObjects/LeaderboardsButton.hpp" />
+		<Unit filename="NativeObjects/MenuBG.cpp" />
+		<Unit filename="NativeObjects/MenuBG.hpp" />
+		<Unit filename="NativeObjects/MenuControl.cpp" />
+		<Unit filename="NativeObjects/MenuControl.hpp" />
+		<Unit filename="NativeObjects/ModInfoButton.cpp" />
+		<Unit filename="NativeObjects/ModInfoButton.hpp" />
+		<Unit filename="NativeObjects/ModsButton.cpp" />
+		<Unit filename="NativeObjects/ModsButton.hpp" />
+		<Unit filename="NativeObjects/ModsMenu.cpp" />
+		<Unit filename="NativeObjects/ModsMenu.hpp" />
+		<Unit filename="NativeObjects/MultiplayerButton.cpp" />
+		<Unit filename="NativeObjects/MultiplayerButton.hpp" />
+		<Unit filename="NativeObjects/MultiplayerHandler.cpp" />
+		<Unit filename="NativeObjects/MultiplayerHandler.hpp" />
+		<Unit filename="NativeObjects/MultiplayerScreen.cpp" />
+		<Unit filename="NativeObjects/MultiplayerScreen.hpp" />
+		<Unit filename="NativeObjects/NativeObjects.hpp" />
+		<Unit filename="NativeObjects/OptionsButton.cpp" />
+		<Unit filename="NativeObjects/OptionsButton.hpp" />
+		<Unit filename="NativeObjects/OptionsMenu.cpp" />
+		<Unit filename="NativeObjects/OptionsMenu.hpp" />
+		<Unit filename="NativeObjects/PauseMenu.cpp" />
+		<Unit filename="NativeObjects/PauseMenu.hpp" />
+		<Unit filename="NativeObjects/PlayerSelectScreen.cpp" />
+		<Unit filename="NativeObjects/PlayerSelectScreen.hpp" />
+		<Unit filename="NativeObjects/PushButton.cpp" />
+		<Unit filename="NativeObjects/PushButton.hpp" />
+		<Unit filename="NativeObjects/RecordsScreen.cpp" />
+		<Unit filename="NativeObjects/RecordsScreen.hpp" />
+		<Unit filename="NativeObjects/RetroGameLoop.cpp" />
+		<Unit filename="NativeObjects/RetroGameLoop.hpp" />
+		<Unit filename="NativeObjects/SaveSelect.cpp" />
+		<Unit filename="NativeObjects/SaveSelect.hpp" />
+		<Unit filename="NativeObjects/SegaIDButton.cpp" />
+		<Unit filename="NativeObjects/SegaIDButton.hpp" />
+		<Unit filename="NativeObjects/SegaSplash.cpp" />
+		<Unit filename="NativeObjects/SegaSplash.hpp" />
+		<Unit filename="NativeObjects/SettingsScreen.cpp" />
+		<Unit filename="NativeObjects/SettingsScreen.hpp" />
+		<Unit filename="NativeObjects/StaffCredits.cpp" />
+		<Unit filename="NativeObjects/StaffCredits.hpp" />
+		<Unit filename="NativeObjects/StartGameButton.cpp" />
+		<Unit filename="NativeObjects/StartGameButton.hpp" />
+		<Unit filename="NativeObjects/SubMenuButton.cpp" />
+		<Unit filename="NativeObjects/SubMenuButton.hpp" />
+		<Unit filename="NativeObjects/TextLabel.cpp" />
+		<Unit filename="NativeObjects/TextLabel.hpp" />
+		<Unit filename="NativeObjects/TimeAttack.cpp" />
+		<Unit filename="NativeObjects/TimeAttack.hpp" />
+		<Unit filename="NativeObjects/TimeAttackButton.cpp" />
+		<Unit filename="NativeObjects/TimeAttackButton.hpp" />
+		<Unit filename="NativeObjects/TitleScreen.cpp" />
+		<Unit filename="NativeObjects/TitleScreen.hpp" />
+		<Unit filename="NativeObjects/VirtualDPad.cpp" />
+		<Unit filename="NativeObjects/VirtualDPad.hpp" />
+		<Unit filename="NativeObjects/VirtualDPadM.cpp" />
+		<Unit filename="NativeObjects/VirtualDPadM.hpp" />
+		<Unit filename="NativeObjects/ZoneButton.cpp" />
+		<Unit filename="NativeObjects/ZoneButton.hpp" />
+		<Unit filename="Networking.cpp" />
+		<Unit filename="Networking.hpp" />
+		<Unit filename="Object.cpp" />
+		<Unit filename="Object.hpp" />
+		<Unit filename="Palette.cpp" />
+		<Unit filename="Palette.hpp" />
+		<Unit filename="RSDKv4.rc" />
+		<Unit filename="Reader.cpp" />
+		<Unit filename="Reader.hpp" />
+		<Unit filename="Renderer.cpp" />
+		<Unit filename="Renderer.hpp" />
+		<Unit filename="RetroEngine.cpp" />
+		<Unit filename="RetroEngine.hpp" />
+		<Unit filename="Scene.cpp" />
+		<Unit filename="Scene.hpp" />
+		<Unit filename="Scene3D.cpp" />
+		<Unit filename="Scene3D.hpp" />
+		<Unit filename="Script.cpp" />
+		<Unit filename="Script.hpp" />
+		<Unit filename="Sprite.cpp" />
+		<Unit filename="Sprite.hpp" />
+		<Unit filename="String.cpp" />
+		<Unit filename="String.hpp" />
+		<Unit filename="Text.cpp" />
+		<Unit filename="Text.hpp" />
+		<Unit filename="Userdata.cpp" />
+		<Unit filename="Userdata.hpp" />
+		<Unit filename="main.cpp" />
+		<Unit filename="resource.h" />
+		<Extensions>
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

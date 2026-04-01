@@ -237,7 +237,13 @@ void InitUserdata()
 	for (int c = 0; c < DEFAULT_INPUT_COUNT; c++) {VibrationIntensity[c]  = 1;}
 
     // userdata files are loaded from this directory
+    #ifdef __EMSCRIPTEN__
+    // Since RSDKv4.js already did FS.chdir('/RSDKv4'), 
+    // we keep the gamePath relative so it writes directly into the current folder.
+    sprintf(gamePath, "./"); 
+#else
     sprintf(gamePath, "%s", BASE_PATH);
+#endif
 #if RETRO_USE_MOD_LOADER
     sprintf(modsPath, "%s", BASE_PATH);
 #endif

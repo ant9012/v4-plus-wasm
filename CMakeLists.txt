@@ -220,7 +220,6 @@ if(COMPILE_THEORA)
         ${THEORA_DIR}/lib/analyze.c
         ${THEORA_DIR}/lib/apiwrapper.c
         ${THEORA_DIR}/lib/bitpack.c
-        ${THEORA_DIR}/lib/cpu.c
         ${THEORA_DIR}/lib/decapiwrapper.c
         ${THEORA_DIR}/lib/decinfo.c
         ${THEORA_DIR}/lib/decode.c
@@ -254,8 +253,13 @@ if(COMPILE_THEORA)
 endif()
 
 if(RETRO_USE_CURL)
-	find_package(CURL REQUIRED)
-	target_link_libraries(RetroEngine CURL::libcurl)
+    if(EMSCRIPTEN)
+        message(WARNING "cURL not available via Emscripten ports, disabling.")
+        set(RETRO_USE_CURL OFF)
+    else()
+        find_package(CURL REQUIRED)
+        target_link_libraries(RetroEngine CURL::libcurl)
+    endif()
 endif()
 
 if(RETRO_USE_EOS)

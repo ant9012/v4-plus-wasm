@@ -105,7 +105,7 @@ void PlayVideoFile(char *filePath, int audioTrack)
         callbacks.close    = videoClose;
         callbacks.userdata = (void *)file;
 #if RETRO_USING_SDL2 && !RETRO_USING_OPENGL
-        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_IYUV, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
+        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_RGBA, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
 #endif
 
         // TODO: does SDL1.2 support YUV?
@@ -282,12 +282,10 @@ int ProcessVideo()
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
                 glBindTexture(GL_TEXTURE_2D, 0);
 #elif RETRO_USING_SDL2
-                int half_w     = videoVidData->width / 2;
-                const Uint8 *y = (const Uint8 *)videoVidData->pixels;
-                const Uint8 *u = y + (videoVidData->width * videoVidData->height);
-                const Uint8 *v = u + (half_w * (videoVidData->height / 2));
-
-                SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
+                int result = SDL_UpdateTexture(Engine.videoBuffer, NULL, videoVidData->pixels, videoVidData->width * 4);
+                PrintLog("SDL_UpdateTexture result: %d, error: %s", result, SDL_GetError());
+                PrintLog("videoBuffer: %p, pixels: %p, width: %d, height: %d", 
+                         Engine.videoBuffer, videoVidData->pixels, videoVidData->width, videoVidData->height);
 #elif RETRO_USING_SDL1
                 memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
 #endif
@@ -369,7 +367,15 @@ void SetupVideoBuffer(int width, int height)
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
-    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_TARGET, width, height);
+    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+    PrintLog("Created video texture: %p, error: %s", Engine.videoBuffer, SDL_GetError());
+    if (Engine.videoBuffer) {
+        Uint32 format;
+        int access, w, h;
+        SDL_QueryTexture(Engine.videoBuffer, &format, &access, &w, &h);
+        PrintLog("Texture info: format=%u, access=%d, size=%dx%d", format, access, w, h);
+    }
+
 
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
@@ -380,14 +386,6 @@ void SetupVideoBuffer(int width, int height)
 
 void InitVideoBuffer(int width, int height)
 {
-#if !RETRO_USING_OPENGL && RETRO_USING_SDL2 && RETRO_SOFTWARE_RENDER
-    int size  = width * height;
-    int sizeh = (width / 2) * (height / 2);
-    std::vector<Uint8> frame(size + 2 * sizeh);
-    memset(frame.data(), 0, size);
-    memset(frame.data() + size, 128, 2 * sizeh);
-    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr, frame.data(), width, frame.data() + size, width / 2, frame.data() + size + sizeh, width / 2);
-#endif
 }
 
 void CloseVideoBuffer()

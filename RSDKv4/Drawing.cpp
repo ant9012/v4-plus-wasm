@@ -492,6 +492,7 @@ void FlipScreen()
         }
     }
     else {
+        SDL_RenderSetLogicalSize(Engine.renderer, SCREEN_XSIZE, SCREEN_YSIZE);
         SDL_RenderCopy(Engine.renderer, Engine.videoBuffer, NULL, destScreenPos);
     }
 
@@ -518,6 +519,7 @@ void FlipScreen()
         // Apply dimming
         // In RSDKv3, a DrawRectangle would be used for the fade - but I believe that it doesn't draw to the videoBuffer?
         int fade = Engine.gameMode == ENGINE_VIDEOWAIT ? fadeMode : 0xFF - (dimAmount * 0xFF);
+        SDL_SetRenderDrawBlendMode(Engine.renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(Engine.renderer, 0, 0, 0, fade);
 
         if (dimAmount < 1.0 || Engine.gameMode == ENGINE_VIDEOWAIT)

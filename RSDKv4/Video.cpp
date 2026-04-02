@@ -136,6 +136,8 @@ void PlayVideoFile(char *filePath, int audioTrack)
             videoVidData = THEORAPLAY_getVideo(videoDecoder);
             if (!videoVidData)
                 SDL_Delay(1);
+            if (!videoVidData)
+                SDL_Delay(1);
         }
 
         if (!videoVidData) {
@@ -145,6 +147,7 @@ void PlayVideoFile(char *filePath, int audioTrack)
 
         videoWidth  = videoVidData->width;
         videoHeight = videoVidData->height;
+        videoAR     = float(videoWidth) / float(videoHeight);
         videoAR     = float(videoWidth) / float(videoHeight);
 
         SetupVideoBuffer(videoWidth, videoHeight);
@@ -196,7 +199,13 @@ void UpdateVideoFrame()
 
             FileRead(&fileBuffer, 1);
             while (fileBuffer != ',') FileRead(&fileBuffer, 1);
+            while (fileBuffer != ',') FileRead(&fileBuffer, 1);
 
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer, 1);
             FileRead(&fileBuffer2, 2);
             FileRead(&fileBuffer2, 2);
             FileRead(&fileBuffer2, 2);
@@ -237,6 +246,11 @@ int ProcessVideo()
             PlaySfxByName("Menu Decide", false);
         }
 
+        // ── End-of-stream or skip-complete check ──
+        // THEORAPLAY_isDecoding() is the ONLY authoritative signal
+        // that the stream has ended.  A NULL from THEORAPLAY_getVideo()
+        // just means "no frame ready yet" (especially on WASM where
+        // the decoder runs in a Web Worker).
         if (!THEORAPLAY_isDecoding(videoDecoder) || (videoSkipped && fadeMode >= 0xFF)) {
             return QuitVideo();
         }
@@ -306,6 +320,9 @@ int ProcessVideo()
                     THEORAPLAY_freeVideo(videoVidData);
                     videoVidData = NULL;
                 }
+                    THEORAPLAY_freeVideo(videoVidData);
+                    videoVidData = NULL;
+                }
             }
             // If no new frame is ready, Engine.frameBuffer still has the last frame
             // so it will be re-displayed without flickering
@@ -315,13 +332,14 @@ int ProcessVideo()
     }
 
     return VIDEOSTATUS_NOTPLAYING;
+    return VIDEOSTATUS_NOTPLAYING;
 }
 
 int QuitVideo()
 {
     StopVideoPlayback();
     ResumeSound();
-    return VIDEOSTATUS_PLAYING_OGV; // video finished
+    return VIDEOSTATUS_PLAYING_OGV; // video finished (signals engine to leave ENGINE_VIDEOWAIT)
 }
 
 void StopVideoPlayback()
@@ -381,6 +399,8 @@ PrintLog("SetupVideoBuffer: creating texture %dx%d", width, height);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     if (!videoBuffer)
+
+    if (!videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL1
     Engine.videoBuffer = SDL_CreateRGBSurface(0, width, height, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
@@ -388,6 +408,7 @@ PrintLog("SetupVideoBuffer: creating texture %dx%d", width, height);
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
+    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, width, height);
     Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, width, height);
 
     if (!Engine.videoBuffer)
@@ -400,11 +421,17 @@ PrintLog("SetupVideoBuffer: creating texture %dx%d", width, height);
 void InitVideoBuffer(int width, int height)
 {
 #if !RETRO_USING_OPENGL && RETRO_USING_SDL2 && RETRO_SOFTWARE_RENDER
+    // Clear the YUV texture to black (Y=0, U=V=128) so the first
+    // frame doesn't flash garbage.
     int size  = width * height;
     int sizeh = (width / 2) * (height / 2);
     std::vector<Uint8> frame(size + 2 * sizeh);
     memset(frame.data(), 0, size);
     memset(frame.data() + size, 128, 2 * sizeh);
+    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr,
+                         frame.data(), width,
+                         frame.data() + size, width / 2,
+                         frame.data() + size + sizeh, width / 2);
     SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr,
                          frame.data(), width,
                          frame.data() + size, width / 2,

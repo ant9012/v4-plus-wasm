@@ -53,8 +53,6 @@ bool ProcessEvents()
 
         Mono_WakeAudio();
 
-        // Inside RetroEngine.cpp or Renderer.cpp
-
 
         UpdateCursorVisibility(&Engine.sdlEvents);
 
@@ -885,6 +883,8 @@ void RetroEngine::Run()
     #if RETRO_USING_SDL1 || RETRO_USING_SDL2
     SDL_Quit();
     #endif
+    emscripten_cancel_main_loop();
+    EM_ASM_({ window.location.href = window.location.href.substring(0, window.location.href.lastIndexOf('/')); }); 
 
 #endif // __EMSCRIPTEN__
 }

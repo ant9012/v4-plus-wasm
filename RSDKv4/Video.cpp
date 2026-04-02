@@ -1,6 +1,10 @@
 #include "RetroEngine.hpp"
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 enum VideoStatus {
     VIDEOSTATUS_NOTPLAYING,
     VIDEOSTATUS_PLAYING_OGV,
@@ -32,7 +36,7 @@ static long videoRead(THEORAPLAY_Io *io, void *buf, long buflen)
     if (br == 0)
         return -1;
     return (int)br;
-} // IoFopenRead
+}
 
 static void videoClose(THEORAPLAY_Io *io)
 {
@@ -108,7 +112,6 @@ void PlayVideoFile(char *filePath, int audioTrack)
         videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_IYUV, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
 #endif
 
-        // TODO: does SDL1.2 support YUV?
 #if RETRO_USING_SDL1 && !RETRO_USING_OPENGL
         videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_RGBA, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
 #endif
@@ -123,13 +126,11 @@ void PlayVideoFile(char *filePath, int audioTrack)
         }
 
         // Wait for the first decoded frame.
-        // SDL_Delay(1) yields to the browser event loop on Emscripten,
-        // giving the THEORAPLAY Web Worker its startup tick.
-        // SDL_Delay is pre-registered in SDL's Asyncify exports so this
-        // works correctly without any extra Asyncify configuration.
+        // On Emscripten the decoder runs in a Web Worker;
+        // SDL_Delay(1) yields to the browser event loop via Asyncify
+        // so the worker gets time to produce the first frame.
         while (!videoVidData) {
-            if (!videoVidData)
-                videoVidData = THEORAPLAY_getVideo(videoDecoder);
+            videoVidData = THEORAPLAY_getVideo(videoDecoder);
             if (!videoVidData)
                 SDL_Delay(1);
         }
@@ -141,13 +142,12 @@ void PlayVideoFile(char *filePath, int audioTrack)
 
         videoWidth  = videoVidData->width;
         videoHeight = videoVidData->height;
-        // commit video Aspect Ratio.
-        videoAR = float(videoWidth) / float(videoHeight);
+        videoAR     = float(videoWidth) / float(videoHeight);
 
         SetupVideoBuffer(videoWidth, videoHeight);
         vidBaseticks = SDL_GetTicks();
         vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
-        videoPlaying = 1; // playing ogv
+        videoPlaying = 1;
         trackID      = TRACK_COUNT - 1;
 
         videoSkipped    = false;
@@ -184,13 +184,13 @@ void UpdateVideoFrame()
             }
 
             FileRead(&fileBuffer, 1);
-            while (fileBuffer != ',') FileRead(&fileBuffer, 1); // gif image start identifier
+            while (fileBuffer != ',') FileRead(&fileBuffer, 1);
 
-            FileRead(&fileBuffer2, 2); // IMAGE LEFT
-            FileRead(&fileBuffer2, 2); // IMAGE TOP
-            FileRead(&fileBuffer2, 2); // IMAGE WIDTH
-            FileRead(&fileBuffer2, 2); // IMAGE HEIGHT
-            FileRead(&fileBuffer, 1);  // PaletteType
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer, 1);
             bool interlaced = (fileBuffer & 0x40) >> 6;
             if (fileBuffer >> 7 == 1) {
                 int c = 0x80;
@@ -248,19 +248,17 @@ int ProcessVideo()
             return QuitVideo();
         }
 
-        // Don't pause or it'll go wild
         if (videoPlaying == VIDEOSTATUS_PLAYING_OGV) {
             const Uint32 now = (SDL_GetTicks() - vidBaseticks);
 
-            if (!videoVidData) {
+            // Try to get the next frame if we don't have one.
+            // On WASM the decoder Web Worker may not have produced
+            // a frame yet — a NULL here just means "not ready",
+            // NOT "video is over".  THEORAPLAY_isDecoding() above
+            // is the authoritative end-of-stream check.
+            if (!videoVidData)
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
-                if (!videoVidData) {
-                    StopVideoPlayback();
-                    ResumeSound();
-                    return QuitVideo();
-                }
-            }
-            
+
             // Play video frames when it's time.
             if (videoVidData && (videoVidData->playms <= now)) {
                 if (vidFrameMS && ((now - videoVidData->playms) >= vidFrameMS)) {
@@ -277,42 +275,42 @@ int ProcessVideo()
                         videoVidData = last;
                 }
 
-                // do nothing; we're far behind and out of options.
                 if (!videoVidData) {
-                    // video lagging uh oh
+                    // video lagging, nothing we can do
                 }
 
 #if RETRO_USING_OPENGL
-if (videoVidData->pixels) {
+                if (videoVidData && videoVidData->pixels) {
                     glBindTexture(GL_TEXTURE_2D, videoBuffer);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE,
+                                    videoVidData->pixels);
                     glBindTexture(GL_TEXTURE_2D, 0);
                 }
 #elif RETRO_USING_SDL2
-                int half_w     = videoVidData->width / 2;
-                const Uint8 *y = (const Uint8 *)videoVidData->pixels;
-                const Uint8 *u = y + (videoVidData->width * videoVidData->height);
-                const Uint8 *v = u + (half_w * (videoVidData->height / 2));
+                if (videoVidData) {
+                    int half_w     = videoVidData->width / 2;
+                    const Uint8 *y = (const Uint8 *)videoVidData->pixels;
+                    const Uint8 *u = y + (videoVidData->width * videoVidData->height);
+                    const Uint8 *v = u + (half_w * (videoVidData->height / 2));
 
-                // SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
+                    SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
+                }
 #elif RETRO_USING_SDL1
-                memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
+                if (videoVidData)
+                    memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
 #endif
 
-                THEORAPLAY_freeVideo(videoVidData);
-                videoVidData = NULL;
-            }
-            else if (!videoVidData) {
-                // something is wrong with THEORAPLAY_isDecoding, so
-                // here's some tape & glue
-                return QuitVideo();
+                if (videoVidData) {
+                    THEORAPLAY_freeVideo(videoVidData);
+                    videoVidData = NULL;
+                }
             }
 
-            return VIDEOSTATUS_PLAYING_RSV; // its playing as expected
+            return VIDEOSTATUS_PLAYING_RSV; // still playing
         }
     }
 
-    return VIDEOSTATUS_NOTPLAYING; // its not even initialised
+    return VIDEOSTATUS_NOTPLAYING;
 }
 
 int QuitVideo()
@@ -325,11 +323,9 @@ int QuitVideo()
 void StopVideoPlayback()
 {
     if (videoPlaying == 1) {
-#ifdef __EMSCRIPTEN__
-        SDL_PauseAudio(1);
-#else
+        // SDL_LockAudio works on Emscripten and is safer than
+        // SDL_PauseAudio (which would change the global pause state).
         SDL_LockAudio();
-#endif
 
         if (videoSkipped && fadeMode >= 0xFF)
             fadeMode = 0;
@@ -346,11 +342,7 @@ void StopVideoPlayback()
         CloseVideoBuffer();
         videoPlaying = 0;
 
-#ifdef __EMSCRIPTEN__
-        SDL_PauseAudio(0);
-#else
         SDL_UnlockAudio();
-#endif
     }
 }
 
@@ -372,7 +364,7 @@ void SetupVideoBuffer(int width, int height)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
-    
+
     if (!videoBuffer || !&videoBuffer || !videoVidData)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL1
@@ -381,7 +373,6 @@ void SetupVideoBuffer(int width, int height)
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
-    // IYUV matches THEORAPLAY_VIDFMT_IYUV; STREAMING is required for SDL_UpdateYUVTexture.
     Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, width, height);
 
     if (!Engine.videoBuffer)

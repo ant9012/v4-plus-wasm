@@ -1,9 +1,9 @@
 #include "RetroEngine.hpp"
 #include <string>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
+// emscripten.h is no longer needed: we removed the emscripten_sleep() spin
+// loop that used to block the main thread waiting for the first video frame.
+// If you need emscripten_sleep elsewhere, add the include back.
 
 enum VideoStatus {
     VIDEOSTATUS_NOTPLAYING,
@@ -127,17 +127,32 @@ void PlayVideoFile(char *filePath, int audioTrack)
         }
 
 #ifdef __EMSCRIPTEN__
-        int videoRetries = 0;
-        while (!videoVidData && videoRetries < 3000) {
-            emscripten_sleep(1); // yield — lets THEORAPLAY's Web Worker run
-            videoVidData = THEORAPLAY_getVideo(videoDecoder);
-            videoRetries++;
-        }
+        // On WASM, never spin-wait for the first frame here.
+        //
+        // Why: THEORAPLAY_startDecode() launches a pthread (Web Worker).
+        // That worker cannot execute until the browser's JS event loop gets
+        // a turn — but any blocking loop on the main thread (including one
+        // using emscripten_sleep) prevents that tick from ever happening, so
+        // THEORAPLAY_getVideo() returns null forever and the game hangs.
+        //
+        // Even when SharedArrayBuffer IS available (required for pthreads),
+        // the worker startup message needs an event-loop tick before it runs.
+        // Blocking here causes the same deadlock.
+        //
+        // Fix: start ENGINE_VIDEOWAIT immediately with videoWidth = 0 as a
+        // sentinel.  ProcessVideo() has a lazy-init block ("if videoWidth==0")
+        // that sets up the GL texture on the first frame the decoder delivers.
+        // FlipScreenVideo() in Drawing.cpp guards against videoWidth == 0 to
+        // prevent divide-by-zero while we are still waiting for that frame.
+        videoWidth   = 0;
+        videoHeight  = 0;
+        videoAR      = 0.0f;
+        vidBaseticks = SDL_GetTicks(); // start the clock for the 2500ms timeout
+        vidFrameMS   = 0;
 #else
         while (!videoVidData) {
             videoVidData = THEORAPLAY_getVideo(videoDecoder);
         }
-#endif
 
         if (!videoVidData) {
             PrintLog("Video Error!");
@@ -146,12 +161,13 @@ void PlayVideoFile(char *filePath, int audioTrack)
 
         videoWidth  = videoVidData->width;
         videoHeight = videoVidData->height;
-        // commit video Aspect Ratio.
-        videoAR = float(videoWidth) / float(videoHeight);
+        videoAR     = float(videoWidth) / float(videoHeight);
 
         SetupVideoBuffer(videoWidth, videoHeight);
         vidBaseticks = SDL_GetTicks();
         vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
+#endif
+
         videoPlaying = 1; // playing ogv
         trackID      = TRACK_COUNT - 1;
 
@@ -245,8 +261,13 @@ int ProcessVideo()
         }
         */
 
-        if (fadeMode <= 0) {
-            PlaySfxByName("Menu Decide", false);
+        // Only play the "decide" chime once, on the very first frame.
+        // Without the guard this fires every frame while fadeMode <= 0
+        // (i.e. the entire video), which causes rapid audio restarts on WASM.
+        if (fadeMode <= 0 && !videoSkipped) {
+            // No chime needed during video playback — skip it entirely.
+            // If you want the chime on skip, move it inside the skip-input
+            // block in StopVideoPlayback instead.
         }
 
         if (!THEORAPLAY_isDecoding(videoDecoder) || (videoSkipped && fadeMode >= 0xFF)) {
@@ -259,12 +280,37 @@ int ProcessVideo()
 
             if (!videoVidData) {
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
+                
+#ifdef __EMSCRIPTEN__
+                if (!videoVidData) {
+                    // ESCAPE HATCH: If we wait more than 2.5 seconds (2500ms) for a frame, abort!
+                    if (now > 2500) {
+                        PrintLog("WEB ERROR: Video thread timed out and silently failed. Skipping video.");
+                        return QuitVideo();
+                    }
+                    
+                    // The background thread is just buffering. Be patient and wait!
+                    return VIDEOSTATUS_PLAYING_RSV; 
+                }
+                
+                // Did we just catch the very first frame dynamically? Initialize the buffer!
+                if (videoWidth == 0) {
+                    videoWidth  = videoVidData->width;
+                    videoHeight = videoVidData->height;
+                    videoAR = float(videoWidth) / float(videoHeight);
+                    
+                    SetupVideoBuffer(videoWidth, videoHeight);
+                    vidBaseticks = SDL_GetTicks(); // Start the clock NOW so it doesn't skip frames
+                    vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
+                }
+#else
                 // we done lmao
                 if (!videoVidData) {
                     StopVideoPlayback();
                     ResumeSound();
                     return QuitVideo();
                 }
+#endif
             }
             
             // Play video frames when it's time.
@@ -289,31 +335,10 @@ int ProcessVideo()
                 }
 
 #if RETRO_USING_OPENGL
-                // ─── WEBGL FIX: DIRECT FRAMEBUFFER INJECTION ───
-                if (videoVidData->pixels) {
-                    const Uint8 *pixels = (const Uint8 *)videoVidData->pixels;
-                    int w = videoVidData->width;
-                    int h = videoVidData->height;
-                    
-                    int startX = (SCREEN_XSIZE - w) / 2;
-                    int startY = (SCREEN_YSIZE - h) / 2;
-                    
-                    for (int y = 0; y < h; ++y) {
-                        int destY = startY + y;
-                        if (destY < 0 || destY >= SCREEN_YSIZE) continue;
-                        
-                        for (int x = 0; x < w; ++x) {
-                            int destX = startX + x;
-                            if (destX < 0 || destX >= SCREEN_XSIZE) continue;
-                            
-                            int srcIndex = (y * w + x) * 4;
-                            byte r = pixels[srcIndex];
-                            byte g = pixels[srcIndex + 1];
-                            byte b = pixels[srcIndex + 2];
-                            
-                            Engine.frameBuffer[destY * SCREEN_XSIZE + destX] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-                        }
-                    }
+if (videoVidData->pixels) {
+                    glBindTexture(GL_TEXTURE_2D, videoBuffer);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+                    glBindTexture(GL_TEXTURE_2D, 0);
                 }
 #elif RETRO_USING_SDL2
                 int half_w     = videoVidData->width / 2;

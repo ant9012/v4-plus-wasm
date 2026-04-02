@@ -619,6 +619,14 @@ struct DrawVertexCD {
 void FlipScreenVideo()
 {
 #if RETRO_USING_OPENGL
+    // Guard: on WASM the GL texture is not set up until the decoder delivers
+    // its first frame (videoWidth is 0 until then).  Drawing with width==0
+    // causes divide-by-zero in the normalise() calls below, producing NaN
+    // vertex positions that WebGL silently ignores — resulting in a black
+    // screen.  Just skip the draw until the buffer is ready.
+    if (videoWidth == 0 || videoHeight == 0)
+        return;
+
     DrawVertexCD screenVerts[4];
 
     screenVerts[0].u = 0;

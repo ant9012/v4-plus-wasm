@@ -54,7 +54,7 @@ bool ProcessEvents()
         Mono_WakeAudio();
 
         // Inside RetroEngine.cpp or Renderer.cpp
-PrintLog("Frame Tick");
+
 
         UpdateCursorVisibility(&Engine.sdlEvents);
 

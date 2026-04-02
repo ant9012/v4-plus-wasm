@@ -126,18 +126,6 @@ void PlayVideoFile(char *filePath, int audioTrack)
             return;
         }
 
-        // Wait for the first decoded frame before continuing.
-        //
-        // On Emscripten, THEORAPLAY_startDecode() spawns a pthread which
-        // becomes a Web Worker.  Web Workers cannot start until the browser's
-        // JS event loop gets a turn — but a tight spin loop on the main
-        // thread blocks that event loop entirely, so the worker never
-        // initialises and getVideo() returns null forever (causing a hang /
-        // browser "unresponsive script" kill).
-        //
-        // emscripten_sleep(1) yields back to the browser for one millisecond,
-        // giving the worker its startup tick.  A retry cap prevents an
-        // infinite hang if the file is unreadable.
 #ifdef __EMSCRIPTEN__
         int videoRetries = 0;
         while (!videoVidData && videoRetries < 3000) {
@@ -281,11 +269,6 @@ int ProcessVideo()
             if (videoVidData && (videoVidData->playms <= now)) {
                 if (vidFrameMS && ((now - videoVidData->playms) >= vidFrameMS)) {
 
-                    // Skip frames to catch up, but keep track of the last one+
-                    //  in case we catch up to a series of dupe frames, which
-                    //  means we'd have to draw that final frame and then wait for
-                    //  more.
-
                     const THEORAPLAY_VideoFrame *last = videoVidData;
                     while ((videoVidData = THEORAPLAY_getVideo(videoDecoder)) != NULL) {
                         THEORAPLAY_freeVideo(last);
@@ -304,9 +287,32 @@ int ProcessVideo()
                 }
 
 #if RETRO_USING_OPENGL
-                glBindTexture(GL_TEXTURE_2D, videoBuffer);
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
-                glBindTexture(GL_TEXTURE_2D, 0);
+                // ─── WEBGL FIX: DIRECT FRAMEBUFFER INJECTION ───
+                if (videoVidData->pixels) {
+                    const Uint8 *pixels = (const Uint8 *)videoVidData->pixels;
+                    int w = videoVidData->width;
+                    int h = videoVidData->height;
+                    
+                    int startX = (SCREEN_XSIZE - w) / 2;
+                    int startY = (SCREEN_YSIZE - h) / 2;
+                    
+                    for (int y = 0; y < h; ++y) {
+                        int destY = startY + y;
+                        if (destY < 0 || destY >= SCREEN_YSIZE) continue;
+                        
+                        for (int x = 0; x < w; ++x) {
+                            int destX = startX + x;
+                            if (destX < 0 || destX >= SCREEN_XSIZE) continue;
+                            
+                            int srcIndex = (y * w + x) * 4;
+                            byte r = pixels[srcIndex];
+                            byte g = pixels[srcIndex + 1];
+                            byte b = pixels[srcIndex + 2];
+                            
+                            Engine.frameBuffer[destY * SCREEN_XSIZE + destX] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                        }
+                    }
+                }
 #elif RETRO_USING_SDL2
                 int half_w     = videoVidData->width / 2;
                 const Uint8 *y = (const Uint8 *)videoVidData->pixels;
@@ -344,19 +350,6 @@ int QuitVideo()
 void StopVideoPlayback()
 {
     if (videoPlaying == 1) {
-        // `videoPlaying` and `videoDecoder` are read by the audio thread,
-        // so we need to prevent a race condition.
-        //
-        // On Emscripten (WASM + pthreads), SDL_LockAudio() can deadlock:
-        // the main thread calls SDL_LockAudio() while the audio callback
-        // thread is blocked waiting on THEORAPLAY's decoder thread, and
-        // the decoder thread is a separate Web Worker that needs the main
-        // thread's event loop to yield before it can finish. The three-way
-        // wait produces a hard deadlock that kills the tab.
-        //
-        // SDL_PauseAudio(1) / SDL_PauseAudio(0) achieves the same mutual
-        // exclusion without requiring the audio callback to return first,
-        // which is safe from the Emscripten main thread.
 #ifdef __EMSCRIPTEN__
         SDL_PauseAudio(1);
 #else
@@ -404,8 +397,8 @@ void SetupVideoBuffer(int width, int height)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
-	
-	if (!videoBuffer || !&videoBuffer || !videoVidData)
+    
+    if (!videoBuffer || !&videoBuffer || !videoVidData)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL1
     Engine.videoBuffer = SDL_CreateRGBSurface(0, width, height, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);

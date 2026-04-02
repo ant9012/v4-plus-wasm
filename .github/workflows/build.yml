@@ -39,7 +39,7 @@ env:
   GENERAL_LINUX_FLAGS: "-DCMAKE_CXX_FLAGS='-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'"
   # WASM: HW render, Steam, Discord, and networking are all force-disabled by platforms/Emscripten.cmake.
   # OUTPUT_NAME is also forced to "RSDKv4" by that file, so passing RETRO_OUTPUT_NAME here has no effect.
-  GENERAL_WASM_FLAGS: "-DCMAKE_BUILD_TYPE=Release -DRETRO_DISABLE_PLUS=ON -DRETRO_SDL_VERSION=2 -DRETRO_MOD_LOADER=ON"
+  GENERAL_WASM_FLAGS: "-DCMAKE_BUILD_TYPE=Release -DRETRO_SDL_VERSION=2 -DRETRO_MOD_LOADER=ON"
 
 jobs:
   v4-windows:

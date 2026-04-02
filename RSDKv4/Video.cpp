@@ -1,6 +1,10 @@
 #include "RetroEngine.hpp"
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 enum VideoStatus {
     VIDEOSTATUS_NOTPLAYING,
     VIDEOSTATUS_PLAYING_OGV,
@@ -105,7 +109,7 @@ void PlayVideoFile(char *filePath, int audioTrack)
         callbacks.close    = videoClose;
         callbacks.userdata = (void *)file;
 #if RETRO_USING_SDL2 && !RETRO_USING_OPENGL
-        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_RGBA, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
+        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_IYUV, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
 #endif
 
         // TODO: does SDL1.2 support YUV?
@@ -121,10 +125,32 @@ void PlayVideoFile(char *filePath, int audioTrack)
             PrintLog("Video Decoder Error!");
             return;
         }
-        while (!videoVidData) {
-            if (!videoVidData)
-                videoVidData = THEORAPLAY_getVideo(videoDecoder);
+
+        // Wait for the first decoded frame before continuing.
+        //
+        // On Emscripten, THEORAPLAY_startDecode() spawns a pthread which
+        // becomes a Web Worker.  Web Workers cannot start until the browser's
+        // JS event loop gets a turn — but a tight spin loop on the main
+        // thread blocks that event loop entirely, so the worker never
+        // initialises and getVideo() returns null forever (causing a hang /
+        // browser "unresponsive script" kill).
+        //
+        // emscripten_sleep(1) yields back to the browser for one millisecond,
+        // giving the worker its startup tick.  A retry cap prevents an
+        // infinite hang if the file is unreadable.
+#ifdef __EMSCRIPTEN__
+        int videoRetries = 0;
+        while (!videoVidData && videoRetries < 3000) {
+            emscripten_sleep(1); // yield — lets THEORAPLAY's Web Worker run
+            videoVidData = THEORAPLAY_getVideo(videoDecoder);
+            videoRetries++;
         }
+#else
+        while (!videoVidData) {
+            videoVidData = THEORAPLAY_getVideo(videoDecoder);
+        }
+#endif
+
         if (!videoVidData) {
             PrintLog("Video Error!");
             return;
@@ -282,10 +308,12 @@ int ProcessVideo()
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
                 glBindTexture(GL_TEXTURE_2D, 0);
 #elif RETRO_USING_SDL2
-                int result = SDL_UpdateTexture(Engine.videoBuffer, NULL, videoVidData->pixels, videoVidData->width * 4);
-                PrintLog("SDL_UpdateTexture result: %d, error: %s", result, SDL_GetError());
-                PrintLog("videoBuffer: %p, pixels: %p, width: %d, height: %d", 
-                         Engine.videoBuffer, videoVidData->pixels, videoVidData->width, videoVidData->height);
+                int half_w     = videoVidData->width / 2;
+                const Uint8 *y = (const Uint8 *)videoVidData->pixels;
+                const Uint8 *u = y + (videoVidData->width * videoVidData->height);
+                const Uint8 *v = u + (half_w * (videoVidData->height / 2));
+
+                SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
 #elif RETRO_USING_SDL1
                 memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
 #endif
@@ -316,10 +344,24 @@ int QuitVideo()
 void StopVideoPlayback()
 {
     if (videoPlaying == 1) {
-        // `videoPlaying` and `videoDecoder` are read by
-        // the audio thread, so lock it to prevent a race
-        // condition that results in invalid memory accesses.
+        // `videoPlaying` and `videoDecoder` are read by the audio thread,
+        // so we need to prevent a race condition.
+        //
+        // On Emscripten (WASM + pthreads), SDL_LockAudio() can deadlock:
+        // the main thread calls SDL_LockAudio() while the audio callback
+        // thread is blocked waiting on THEORAPLAY's decoder thread, and
+        // the decoder thread is a separate Web Worker that needs the main
+        // thread's event loop to yield before it can finish. The three-way
+        // wait produces a hard deadlock that kills the tab.
+        //
+        // SDL_PauseAudio(1) / SDL_PauseAudio(0) achieves the same mutual
+        // exclusion without requiring the audio callback to return first,
+        // which is safe from the Emscripten main thread.
+#ifdef __EMSCRIPTEN__
+        SDL_PauseAudio(1);
+#else
         SDL_LockAudio();
+#endif
 
         if (videoSkipped && fadeMode >= 0xFF)
             fadeMode = 0;
@@ -336,7 +378,11 @@ void StopVideoPlayback()
         CloseVideoBuffer();
         videoPlaying = 0;
 
+#ifdef __EMSCRIPTEN__
+        SDL_PauseAudio(0);
+#else
         SDL_UnlockAudio();
+#endif
     }
 }
 
@@ -367,15 +413,7 @@ void SetupVideoBuffer(int width, int height)
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
-    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, width, height);
-    PrintLog("Created video texture: %p, error: %s", Engine.videoBuffer, SDL_GetError());
-    if (Engine.videoBuffer) {
-        Uint32 format;
-        int access, w, h;
-        SDL_QueryTexture(Engine.videoBuffer, &format, &access, &w, &h);
-        PrintLog("Texture info: format=%u, access=%d, size=%dx%d", format, access, w, h);
-    }
-
+    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_TARGET, width, height);
 
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
@@ -386,6 +424,14 @@ void SetupVideoBuffer(int width, int height)
 
 void InitVideoBuffer(int width, int height)
 {
+#if !RETRO_USING_OPENGL && RETRO_USING_SDL2 && RETRO_SOFTWARE_RENDER
+    int size  = width * height;
+    int sizeh = (width / 2) * (height / 2);
+    std::vector<Uint8> frame(size + 2 * sizeh);
+    memset(frame.data(), 0, size);
+    memset(frame.data() + size, 128, 2 * sizeh);
+    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr, frame.data(), width, frame.data() + size, width / 2, frame.data() + size + sizeh, width / 2);
+#endif
 }
 
 void CloseVideoBuffer()

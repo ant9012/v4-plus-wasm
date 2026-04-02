@@ -1,10 +1,6 @@
 #include "RetroEngine.hpp"
 #include <string>
 
-// emscripten.h is no longer needed: we removed the emscripten_sleep() spin
-// loop that used to block the main thread waiting for the first video frame.
-// If you need emscripten_sleep elsewhere, add the include back.
-
 enum VideoStatus {
     VIDEOSTATUS_NOTPLAYING,
     VIDEOSTATUS_PLAYING_OGV,
@@ -126,32 +122,16 @@ void PlayVideoFile(char *filePath, int audioTrack)
             return;
         }
 
-#ifdef __EMSCRIPTEN__
-        // On WASM, never spin-wait for the first frame here.
-        //
-        // Why: THEORAPLAY_startDecode() launches a pthread (Web Worker).
-        // That worker cannot execute until the browser's JS event loop gets
-        // a turn — but any blocking loop on the main thread (including one
-        // using emscripten_sleep) prevents that tick from ever happening, so
-        // THEORAPLAY_getVideo() returns null forever and the game hangs.
-        //
-        // Even when SharedArrayBuffer IS available (required for pthreads),
-        // the worker startup message needs an event-loop tick before it runs.
-        // Blocking here causes the same deadlock.
-        //
-        // Fix: start ENGINE_VIDEOWAIT immediately with videoWidth = 0 as a
-        // sentinel.  ProcessVideo() has a lazy-init block ("if videoWidth==0")
-        // that sets up the GL texture on the first frame the decoder delivers.
-        // FlipScreenVideo() in Drawing.cpp guards against videoWidth == 0 to
-        // prevent divide-by-zero while we are still waiting for that frame.
-        videoWidth   = 0;
-        videoHeight  = 0;
-        videoAR      = 0.0f;
-        vidBaseticks = SDL_GetTicks(); // start the clock for the 2500ms timeout
-        vidFrameMS   = 0;
-#else
+        // Wait for the first decoded frame.
+        // SDL_Delay(1) yields to the browser event loop on Emscripten,
+        // giving the THEORAPLAY Web Worker its startup tick.
+        // SDL_Delay is pre-registered in SDL's Asyncify exports so this
+        // works correctly without any extra Asyncify configuration.
         while (!videoVidData) {
-            videoVidData = THEORAPLAY_getVideo(videoDecoder);
+            if (!videoVidData)
+                videoVidData = THEORAPLAY_getVideo(videoDecoder);
+            if (!videoVidData)
+                SDL_Delay(1);
         }
 
         if (!videoVidData) {
@@ -161,13 +141,12 @@ void PlayVideoFile(char *filePath, int audioTrack)
 
         videoWidth  = videoVidData->width;
         videoHeight = videoVidData->height;
-        videoAR     = float(videoWidth) / float(videoHeight);
+        // commit video Aspect Ratio.
+        videoAR = float(videoWidth) / float(videoHeight);
 
         SetupVideoBuffer(videoWidth, videoHeight);
         vidBaseticks = SDL_GetTicks();
         vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
-#endif
-
         videoPlaying = 1; // playing ogv
         trackID      = TRACK_COUNT - 1;
 
@@ -261,13 +240,8 @@ int ProcessVideo()
         }
         */
 
-        // Only play the "decide" chime once, on the very first frame.
-        // Without the guard this fires every frame while fadeMode <= 0
-        // (i.e. the entire video), which causes rapid audio restarts on WASM.
-        if (fadeMode <= 0 && !videoSkipped) {
-            // No chime needed during video playback — skip it entirely.
-            // If you want the chime on skip, move it inside the skip-input
-            // block in StopVideoPlayback instead.
+        if (fadeMode <= 0) {
+            PlaySfxByName("Menu Decide", false);
         }
 
         if (!THEORAPLAY_isDecoding(videoDecoder) || (videoSkipped && fadeMode >= 0xFF)) {
@@ -280,37 +254,11 @@ int ProcessVideo()
 
             if (!videoVidData) {
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
-                
-#ifdef __EMSCRIPTEN__
-                if (!videoVidData) {
-                    // ESCAPE HATCH: If we wait more than 2.5 seconds (2500ms) for a frame, abort!
-                    if (now > 2500) {
-                        PrintLog("WEB ERROR: Video thread timed out and silently failed. Skipping video.");
-                        return QuitVideo();
-                    }
-                    
-                    // The background thread is just buffering. Be patient and wait!
-                    return VIDEOSTATUS_PLAYING_RSV; 
-                }
-                
-                // Did we just catch the very first frame dynamically? Initialize the buffer!
-                if (videoWidth == 0) {
-                    videoWidth  = videoVidData->width;
-                    videoHeight = videoVidData->height;
-                    videoAR = float(videoWidth) / float(videoHeight);
-                    
-                    SetupVideoBuffer(videoWidth, videoHeight);
-                    vidBaseticks = SDL_GetTicks(); // Start the clock NOW so it doesn't skip frames
-                    vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
-                }
-#else
-                // we done lmao
                 if (!videoVidData) {
                     StopVideoPlayback();
                     ResumeSound();
                     return QuitVideo();
                 }
-#endif
             }
             
             // Play video frames when it's time.
@@ -433,7 +381,8 @@ void SetupVideoBuffer(int width, int height)
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
-    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_TARGET, width, height);
+    // IYUV matches THEORAPLAY_VIDFMT_IYUV; STREAMING is required for SDL_UpdateYUVTexture.
+    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, width, height);
 
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");

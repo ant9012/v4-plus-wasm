@@ -5,6 +5,12 @@
 #include <emscripten.h>
 #endif
 
+#if RETRO_USING_SDL2
+extern SDL_AudioStream *ogv_stream;
+extern SDL_AudioSpec audioDeviceFormat;
+#endif
+
+
 enum VideoStatus {
     VIDEOSTATUS_NOTPLAYING,
     VIDEOSTATUS_PLAYING_OGV,
@@ -36,7 +42,7 @@ static long videoRead(THEORAPLAY_Io *io, void *buf, long buflen)
     if (br == 0)
         return -1;
     return (int)br;
-} // IoFopenRead
+}
 
 static void videoClose(THEORAPLAY_Io *io)
 {
@@ -108,17 +114,17 @@ void PlayVideoFile(char *filePath, int audioTrack)
         callbacks.read     = videoRead;
         callbacks.close    = videoClose;
         callbacks.userdata = (void *)file;
+
 #if RETRO_USING_SDL2 && !RETRO_USING_OPENGL
-        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_IYUV, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
+        videoDecoder = THEORAPLAY_startDecode(&callbacks, 30, THEORAPLAY_VIDFMT_IYUV, audioTrack);
 #endif
 
-        // TODO: does SDL1.2 support YUV?
 #if RETRO_USING_SDL1 && !RETRO_USING_OPENGL
-        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_RGBA, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
+        videoDecoder = THEORAPLAY_startDecode(&callbacks, 30, THEORAPLAY_VIDFMT_RGBA, audioTrack);
 #endif
 
 #if RETRO_USING_OPENGL
-        videoDecoder = THEORAPLAY_startDecode(&callbacks, /*FPS*/ 30, THEORAPLAY_VIDFMT_RGBA, GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0);
+        videoDecoder = THEORAPLAY_startDecode(&callbacks, 30, THEORAPLAY_VIDFMT_RGBA, audioTrack);
 #endif
 
         if (!videoDecoder) {
@@ -126,18 +132,11 @@ void PlayVideoFile(char *filePath, int audioTrack)
             return;
         }
 
-#ifdef __EMSCRIPTEN__
-        int videoRetries = 0;
-        while (!videoVidData && videoRetries < 3000) {
-            emscripten_sleep(1); // yield — lets THEORAPLAY's Web Worker run
-            videoVidData = THEORAPLAY_getVideo(videoDecoder);
-            videoRetries++;
-        }
-#else
         while (!videoVidData) {
             videoVidData = THEORAPLAY_getVideo(videoDecoder);
+            if (!videoVidData)
+                SDL_Delay(1);
         }
-#endif
 
         if (!videoVidData) {
             PrintLog("Video Error!");
@@ -146,13 +145,20 @@ void PlayVideoFile(char *filePath, int audioTrack)
 
         videoWidth  = videoVidData->width;
         videoHeight = videoVidData->height;
-        // commit video Aspect Ratio.
-        videoAR = float(videoWidth) / float(videoHeight);
+        videoAR     = float(videoWidth) / float(videoHeight);
 
         SetupVideoBuffer(videoWidth, videoHeight);
         vidBaseticks = SDL_GetTicks();
         vidFrameMS   = (videoVidData->fps == 0.0) ? 0 : ((Uint32)(1000.0 / videoVidData->fps));
-        videoPlaying = 1; // playing ogv
+
+#if RETRO_USING_SDL2
+        // Clear any leftover audio data from previous video
+        if (ogv_stream) {
+            SDL_AudioStreamClear(ogv_stream);
+        }
+#endif
+
+        videoPlaying = 1;
         trackID      = TRACK_COUNT - 1;
 
         videoSkipped    = false;
@@ -189,13 +195,13 @@ void UpdateVideoFrame()
             }
 
             FileRead(&fileBuffer, 1);
-            while (fileBuffer != ',') FileRead(&fileBuffer, 1); // gif image start identifier
+            while (fileBuffer != ',') FileRead(&fileBuffer, 1);
 
-            FileRead(&fileBuffer2, 2); // IMAGE LEFT
-            FileRead(&fileBuffer2, 2); // IMAGE TOP
-            FileRead(&fileBuffer2, 2); // IMAGE WIDTH
-            FileRead(&fileBuffer2, 2); // IMAGE HEIGHT
-            FileRead(&fileBuffer, 1);  // PaletteType
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer2, 2);
+            FileRead(&fileBuffer, 1);
             bool interlaced = (fileBuffer & 0x40) >> 6;
             if (fileBuffer >> 7 == 1) {
                 int c = 0x80;
@@ -227,24 +233,6 @@ int ProcessVideo()
             fadeMode += 8;
         }
 
-        /*
-        if (inputDevice[0][INPUT_BUTTONA].press || inputDevice[0][INPUT_START].press > 0 || touches > 0) {
-            if (!videoSkipped)
-                fadeMode = 0;
-
-            videoSkipped = true;
-        }
-
-        if (Engine.gameDeviceType == RETRO_MOBILE) {
-            if (touches > 0) {
-                if (!videoSkipped)
-                    fadeMode = 0;
-
-                videoSkipped = true;
-            }
-        }
-        */
-
         if (fadeMode <= 0) {
             PlaySfxByName("Menu Decide", false);
         }
@@ -253,24 +241,14 @@ int ProcessVideo()
             return QuitVideo();
         }
 
-        // Don't pause or it'll go wild
-        if (videoPlaying == VIDEOSTATUS_PLAYING_OGV) {
+        {
             const Uint32 now = (SDL_GetTicks() - vidBaseticks);
 
-            if (!videoVidData) {
+            if (!videoVidData)
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
-                // we done lmao
-                if (!videoVidData) {
-                    StopVideoPlayback();
-                    ResumeSound();
-                    return QuitVideo();
-                }
-            }
-            
-            // Play video frames when it's time.
+
             if (videoVidData && (videoVidData->playms <= now)) {
                 if (vidFrameMS && ((now - videoVidData->playms) >= vidFrameMS)) {
-
                     const THEORAPLAY_VideoFrame *last = videoVidData;
                     while ((videoVidData = THEORAPLAY_getVideo(videoDecoder)) != NULL) {
                         THEORAPLAY_freeVideo(last);
@@ -283,63 +261,60 @@ int ProcessVideo()
                         videoVidData = last;
                 }
 
-                // do nothing; we're far behind and out of options.
-                if (!videoVidData) {
-                    // video lagging uh oh
-                }
+                if (videoVidData) {
+                    // Render video frame into the software framebuffer.
+                    const byte *src = (const byte *)videoVidData->pixels;
 
-#if RETRO_USING_OPENGL
-                // ─── WEBGL FIX: DIRECT FRAMEBUFFER INJECTION ───
-                if (videoVidData->pixels) {
-                    const Uint8 *pixels = (const Uint8 *)videoVidData->pixels;
-                    int w = videoVidData->width;
-                    int h = videoVidData->height;
-                    
-                    int startX = (SCREEN_XSIZE - w) / 2;
-                    int startY = (SCREEN_YSIZE - h) / 2;
-                    
-                    for (int y = 0; y < h; ++y) {
-                        int destY = startY + y;
-                        if (destY < 0 || destY >= SCREEN_YSIZE) continue;
-                        
-                        for (int x = 0; x < w; ++x) {
-                            int destX = startX + x;
-                            if (destX < 0 || destX >= SCREEN_XSIZE) continue;
-                            
-                            int srcIndex = (y * w + x) * 4;
-                            byte r = pixels[srcIndex];
-                            byte g = pixels[srcIndex + 1];
-                            byte b = pixels[srcIndex + 2];
-                            
-                            Engine.frameBuffer[destY * SCREEN_XSIZE + destX] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                    // Calculate scaling to fit video into screen
+                    float scaleX = (float)videoVidData->width / (float)SCREEN_XSIZE;
+                    float scaleY = (float)videoVidData->height / (float)SCREEN_YSIZE;
+                    float scale  = (scaleX > scaleY) ? scaleX : scaleY;
+
+                    int destW = (int)(videoVidData->width / scale);
+                    int destH = (int)(videoVidData->height / scale);
+                    int destX = (SCREEN_XSIZE - destW) / 2;
+                    int destY = (SCREEN_YSIZE - destH) / 2;
+
+                    // Clear framebuffer to black
+                    memset(Engine.frameBuffer, 0, GFX_LINESIZE * SCREEN_YSIZE * sizeof(ushort));
+
+                    // Blit scaled video frame as RGB565
+                    for (int y = 0; y < destH; y++) {
+                        int srcY = (int)(y * scale);
+                        if (srcY >= videoVidData->height)
+                            srcY = videoVidData->height - 1;
+
+                        for (int x = 0; x < destW; x++) {
+                            int srcX = (int)(x * scale);
+                            if (srcX >= videoVidData->width)
+                                srcX = videoVidData->width - 1;
+
+                            int srcIdx = (srcY * videoVidData->width + srcX) * 4; // RGBA
+                            byte r = src[srcIdx + 0];
+                            byte g = src[srcIdx + 1];
+                            byte b = src[srcIdx + 2];
+
+                            int dx = destX + x;
+                            int dy = destY + y;
+                            if (dx >= 0 && dx < GFX_LINESIZE && dy >= 0 && dy < SCREEN_YSIZE) {
+                                Engine.frameBuffer[dy * GFX_LINESIZE + dx] =
+                                    ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                            }
                         }
                     }
+
+                    THEORAPLAY_freeVideo(videoVidData);
+                    videoVidData = NULL;
                 }
-#elif RETRO_USING_SDL2
-                int half_w     = videoVidData->width / 2;
-                const Uint8 *y = (const Uint8 *)videoVidData->pixels;
-                const Uint8 *u = y + (videoVidData->width * videoVidData->height);
-                const Uint8 *v = u + (half_w * (videoVidData->height / 2));
-
-                // SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
-#elif RETRO_USING_SDL1
-                memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
-#endif
-
-                THEORAPLAY_freeVideo(videoVidData);
-                videoVidData = NULL;
             }
-            else if (!videoVidData) {
-                // something is wrong with THEORAPLAY_isDecoding, so
-                // here's some tape & glue
-                return QuitVideo();
-            }
+            // If no new frame is ready, Engine.frameBuffer still has the last frame
+            // so it will be re-displayed without flickering
 
-            return VIDEOSTATUS_PLAYING_RSV; // its playing as expected
+            return VIDEOSTATUS_PLAYING_RSV;
         }
     }
 
-    return VIDEOSTATUS_NOTPLAYING; // its not even initialised
+    return VIDEOSTATUS_NOTPLAYING;
 }
 
 int QuitVideo()
@@ -352,11 +327,7 @@ int QuitVideo()
 void StopVideoPlayback()
 {
     if (videoPlaying == 1) {
-#ifdef __EMSCRIPTEN__
-        SDL_PauseAudio(1);
-#else
         SDL_LockAudio();
-#endif
 
         if (videoSkipped && fadeMode >= 0xFF)
             fadeMode = 0;
@@ -370,20 +341,24 @@ void StopVideoPlayback()
             videoDecoder = NULL;
         }
 
+#if RETRO_USING_SDL2
+        // Clear the stream but don't free it — it's reused for future videos
+        if (ogv_stream) {
+            SDL_AudioStreamClear(ogv_stream);
+        }
+#endif
+
         CloseVideoBuffer();
         videoPlaying = 0;
 
-#ifdef __EMSCRIPTEN__
-        SDL_PauseAudio(0);
-#else
         SDL_UnlockAudio();
-#endif
     }
 }
 
 void SetupVideoBuffer(int width, int height)
 {
 #if RETRO_USING_OPENGL
+PrintLog("SetupVideoBuffer: creating texture %dx%d", width, height);
     if (videoBuffer > 0) {
         glDeleteTextures(1, &videoBuffer);
         videoBuffer = 0;
@@ -392,15 +367,20 @@ void SetupVideoBuffer(int width, int height)
     glBindTexture(GL_TEXTURE_2D, videoBuffer);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+    if (videoVidData && videoVidData->pixels) {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        videoVidData->width, videoVidData->height,
+                        GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+    }
+    PrintLog("SetupVideoBuffer: created texture ID %d", videoBuffer);
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
-    
-    if (!videoBuffer || !&videoBuffer || !videoVidData)
+
+    if (!videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL1
     Engine.videoBuffer = SDL_CreateRGBSurface(0, width, height, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
@@ -408,7 +388,7 @@ void SetupVideoBuffer(int width, int height)
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL2
-    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_TARGET, width, height);
+    Engine.videoBuffer = SDL_CreateTexture(Engine.renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, width, height);
 
     if (!Engine.videoBuffer)
         PrintLog("Failed to create video buffer!");
@@ -425,7 +405,10 @@ void InitVideoBuffer(int width, int height)
     std::vector<Uint8> frame(size + 2 * sizeh);
     memset(frame.data(), 0, size);
     memset(frame.data() + size, 128, 2 * sizeh);
-    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr, frame.data(), width, frame.data() + size, width / 2, frame.data() + size + sizeh, width / 2);
+    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr,
+                         frame.data(), width,
+                         frame.data() + size, width / 2,
+                         frame.data() + size + sizeh, width / 2);
 #endif
 }
 

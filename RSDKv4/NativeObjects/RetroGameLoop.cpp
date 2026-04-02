@@ -113,11 +113,21 @@ void RetroGameLoop_Main(void *objPtr)
             break;
 
         case ENGINE_VIDEOWAIT:
+            /* removing this because it causes flickering 
             ClearScreen(1);
+            */ 
+           PrintLog("ENGINE_VIDEOWAIT tick");
             if (ProcessVideo() == 1)
                 Engine.gameMode = ENGINE_MAINGAME;
-            FlipScreen();
-            break;
+#if RETRO_HARDWARE_RENDER
+            gfxIndexSize        = 0;
+            gfxVertexSize       = 0;
+            gfxIndexSizeOpaque  = 0;
+            gfxVertexSizeOpaque = 0;
+#endif
+            TransferRetroBuffer();
+            RenderRetroBuffer(0xFF, 160.0);
+        break;
 
 #if !RETRO_USE_ORIGINAL_CODE && RETRO_USE_NETWORKING
         case ENGINE_CONNECT2PVS: {

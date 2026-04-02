@@ -6173,23 +6173,19 @@ void ProcessScript(int scriptCodeStart, int jumpTableStart, byte scriptEvent)
                     SwapMusicTrack(scriptText, scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]);
                 break;
             case FUNC_LOADVIDEO:
-                // cheat to let LoadVideo use the v3 method of choosing audio
-                // while not basically copy-pasting the function
-                scriptEng.operands[1] = GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0;
-                // fallthrough to FUNC_LOADVIDEOAUDIO, no break
-            case FUNC_LOADVIDEOAUDIO:
-                opcodeSize = 0;
-                PauseSound();
-                if (FindStringToken(scriptText, ".rsv", 1) <= -1)
-                    PlayVideoFile(scriptText, scriptEng.operands[1]); // not an rsv
-                else
-                    scriptInfo->spriteSheetID = AddGraphicsFile(scriptText);
-                ResumeSound();
-                break;
-            case FUNC_NEXTVIDEOFRAME:
-                opcodeSize = 0;
-                scriptEng.checkResult = ProcessVideo();
-                break;
+    scriptEng.operands[1] = GetGlobalVariableByName("Options.Soundtrack") ? 1 : 0;
+    // fallthrough
+case FUNC_LOADVIDEOAUDIO:
+    opcodeSize = 0;
+    if (FindStringToken(scriptText, ".rsv", 1) <= -1)
+        PlayVideoFile(scriptText, scriptEng.operands[1]);
+    else
+        scriptInfo->spriteSheetID = AddGraphicsFile(scriptText);
+    break;
+case FUNC_NEXTVIDEOFRAME:
+    opcodeSize = 0;
+    scriptEng.checkResult = ProcessVideo();
+    break;
             case FUNC_PLAYSFX:
                 opcodeSize = 0;
                 PlaySfx(scriptEng.operands[0], scriptEng.operands[1]);

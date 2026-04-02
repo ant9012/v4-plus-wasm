@@ -739,16 +739,20 @@ void RetroEngine::RunFrame()
         }
 
         #if !RETRO_USE_ORIGINAL_CODE
-        if (!masterPaused || frameStep) {
+        if (!masterPaused || frameStep || Engine.gameMode == ENGINE_VIDEOWAIT) {
+            PrintLog("About to call FlipScreen, gameMode=%d masterPaused=%d frameStep=%d", Engine.gameMode, masterPaused, frameStep);
             #endif
             FlipScreen();
 
             #if !RETRO_USE_ORIGINAL_CODE
             #if RETRO_USING_OPENGL && RETRO_USING_SDL2
+            PrintLog("Calling SDL_GL_SwapWindow");
             SDL_GL_SwapWindow(Engine.window);
             #endif
             frameStep = false;
         }
+        #else
+        PrintLog("Skipped FlipScreen/Swap! gameMode=%d masterPaused=%d frameStep=%d", Engine.gameMode, masterPaused, frameStep;)
         #endif
 
         #if RETRO_PLATFORM == RETRO_SWITCH

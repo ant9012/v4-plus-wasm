@@ -57,7 +57,6 @@ int InitAudioPlayback()
 #if !RETRO_USE_ORIGINAL_CODE
 #if RETRO_USING_SDL1 || RETRO_USING_SDL2
 
-    // 1. Ensure Subsystem is actually ready
     if (SDL_WasInit(SDL_INIT_AUDIO) == 0) {
         if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
             audioEnabled = false;
@@ -67,31 +66,44 @@ int InitAudioPlayback()
 
     SDL_AudioSpec want;
     SDL_memset(&want, 0, sizeof(want));
-    want.freq     = AUDIO_FREQUENCY; // 44100
-    want.format   = AUDIO_FORMAT;    // AUDIO_S16SYS
-    want.channels = AUDIO_CHANNELS;  // 2
+    want.freq     = AUDIO_FREQUENCY;
+    want.format   = AUDIO_FORMAT;
+    want.channels = AUDIO_CHANNELS;
     want.callback = ProcessAudioPlayback;
 
 #ifdef __EMSCRIPTEN__
-    want.samples = 2048; // Higher buffer for web stability
+    want.samples = 2048;
 #else
     want.samples = AUDIO_SAMPLES;
 #endif
 
 #if RETRO_USING_SDL2
-    // 2. CRITICAL: Set allowedChanges to 0
-    // This forces SDL to resample, matching the engine's 16-bit logic
-    int allowedChanges = 0; 
+    int allowedChanges = 0;
     
     if ((audioDevice = SDL_OpenAudioDevice(nullptr, 0, &want, &audioDeviceFormat, allowedChanges)) > 0) {
         audioEnabled = true;
-        SDL_PauseAudioDevice(audioDevice, 0); // Start unpaused
+        SDL_PauseAudioDevice(audioDevice, 0);
+
+        // Create the OGV audio stream for video playback.
+        // THEORAPLAY outputs float32 stereo at 44100 or 48000 Hz.
+        // We create it at 48000 Hz (common for video) and let SDL resample.
+        // If the actual video is 44100 Hz, the slight pitch difference is negligible,
+        // OR we recreate it per-video in PlayVideoFile if we want perfect accuracy.
+        if (ogv_stream) {
+            SDL_FreeAudioStream(ogv_stream);
+            ogv_stream = NULL;
+        }
+        ogv_stream = SDL_NewAudioStream(AUDIO_F32SYS, 2, 48000,
+                                        audioDeviceFormat.format, audioDeviceFormat.channels, audioDeviceFormat.freq);
+        if (!ogv_stream) {
+            PrintLog("Failed to create OGV audio stream: %s", SDL_GetError());
+        }
     }
     else {
         audioEnabled = false;
-        return true; 
+        return true;
     }
-#endif 
+#endif
 #endif
 #endif
 

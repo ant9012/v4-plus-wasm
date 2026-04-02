@@ -227,6 +227,7 @@ int ProcessVideo()
             fadeMode += 8;
         }
 
+        /*
         if (inputDevice[0][INPUT_BUTTONA].press || inputDevice[0][INPUT_START].press > 0 || touches > 0) {
             if (!videoSkipped)
                 fadeMode = 0;
@@ -242,6 +243,7 @@ int ProcessVideo()
                 videoSkipped = true;
             }
         }
+        */
 
         if (fadeMode <= 0) {
             PlaySfxByName("Menu Decide", false);
@@ -319,7 +321,7 @@ int ProcessVideo()
                 const Uint8 *u = y + (videoVidData->width * videoVidData->height);
                 const Uint8 *v = u + (half_w * (videoVidData->height / 2));
 
-                SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
+                // SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
 #elif RETRO_USING_SDL1
                 memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
 #endif

@@ -6188,7 +6188,7 @@ void ProcessScript(int scriptCodeStart, int jumpTableStart, byte scriptEvent)
                 break;
             case FUNC_NEXTVIDEOFRAME:
                 opcodeSize = 0;
-                UpdateVideoFrame();
+                scriptEng.checkResult = ProcessVideo();
                 break;
             case FUNC_PLAYSFX:
                 opcodeSize = 0;

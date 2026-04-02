@@ -108,10 +108,6 @@ set(emsc_link_options
     -sFORCE_FILESYSTEM=1
     -lidbfs.js
 
-    # Asyncify
-    -sASYNCIFY
-    -sASYNCIFY_STACK_SIZE=65536
-
     # Don't auto-run main
     -sINVOKE_RUN=0
 

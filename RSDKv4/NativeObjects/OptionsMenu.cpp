@@ -187,6 +187,13 @@ void OptionsMenu_Main(void *objPtr)
                     Engine.gameMode = ENGINE_INITDEVMENU;
                 }
 #endif
+
+#ifdef __EMSCRIPTEN__
+                if (self->selectedButton == OPTIONSMENU_BUTTON_EXIT) {
+                    ExitGame();
+                    return;
+                }
+#endif
             }
             break;
         }

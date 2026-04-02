@@ -244,18 +244,24 @@ int ProcessVideo()
             PlaySfxByName("Menu Decide", false);
         }
 
+        // ── End-of-stream or skip-complete check ──
+        // THEORAPLAY_isDecoding() is the ONLY authoritative signal
+        // that the stream has ended.  A NULL from THEORAPLAY_getVideo()
+        // just means "no frame ready yet" (especially on WASM where
+        // the decoder runs in a Web Worker).
         if (!THEORAPLAY_isDecoding(videoDecoder) || (videoSkipped && fadeMode >= 0xFF)) {
             return QuitVideo();
         }
 
-        if (videoPlaying == VIDEOSTATUS_PLAYING_OGV) {
+        // ── Per-frame video update ──
+        // videoPlaying is 1 here (VIDEOSTATUS_PLAYING_OGV).
+        {
             const Uint32 now = (SDL_GetTicks() - vidBaseticks);
 
-            // Try to get the next frame if we don't have one.
-            // On WASM the decoder Web Worker may not have produced
-            // a frame yet — a NULL here just means "not ready",
-            // NOT "video is over".  THEORAPLAY_isDecoding() above
-            // is the authoritative end-of-stream check.
+            // Try to pull the next decoded frame.
+            // On WASM the Web Worker may not have one yet — that is
+            // perfectly normal; we just keep returning "playing" and
+            // the engine will call us again next tick.
             if (!videoVidData)
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
 
@@ -263,6 +269,9 @@ int ProcessVideo()
             if (videoVidData && (videoVidData->playms <= now)) {
                 if (vidFrameMS && ((now - videoVidData->playms) >= vidFrameMS)) {
 
+                    // Skip frames to catch up, but keep the last one
+                    // in case we overshoot into a run of duplicate
+                    // frames (need to display the final one and wait).
                     const THEORAPLAY_VideoFrame *last = videoVidData;
                     while ((videoVidData = THEORAPLAY_getVideo(videoDecoder)) != NULL) {
                         THEORAPLAY_freeVideo(last);
@@ -275,36 +284,40 @@ int ProcessVideo()
                         videoVidData = last;
                 }
 
-                if (!videoVidData) {
-                    // video lagging, nothing we can do
-                }
-
-#if RETRO_USING_OPENGL
-                if (videoVidData && videoVidData->pixels) {
-                    glBindTexture(GL_TEXTURE_2D, videoBuffer);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE,
-                                    videoVidData->pixels);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-                }
-#elif RETRO_USING_SDL2
+                // Upload the frame to the GPU / texture.
                 if (videoVidData) {
-                    int half_w     = videoVidData->width / 2;
-                    const Uint8 *y = (const Uint8 *)videoVidData->pixels;
-                    const Uint8 *u = y + (videoVidData->width * videoVidData->height);
-                    const Uint8 *v = u + (half_w * (videoVidData->height / 2));
+#if RETRO_USING_OPENGL
+                    if (videoVidData->pixels) {
+                        glBindTexture(GL_TEXTURE_2D, videoBuffer);
+                        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                                        videoVidData->width, videoVidData->height,
+                                        GL_RGBA, GL_UNSIGNED_BYTE,
+                                        videoVidData->pixels);
+                        glBindTexture(GL_TEXTURE_2D, 0);
+                    }
+#elif RETRO_USING_SDL2
+                    {
+                        int half_w     = videoVidData->width / 2;
+                        const Uint8 *y = (const Uint8 *)videoVidData->pixels;
+                        const Uint8 *u = y + (videoVidData->width * videoVidData->height);
+                        const Uint8 *v = u + (half_w * (videoVidData->height / 2));
 
-                    SDL_UpdateYUVTexture(Engine.videoBuffer, NULL, y, videoVidData->width, u, half_w, v, half_w);
-                }
+                        SDL_UpdateYUVTexture(Engine.videoBuffer, NULL,
+                                             y, videoVidData->width,
+                                             u, half_w,
+                                             v, half_w);
+                    }
 #elif RETRO_USING_SDL1
-                if (videoVidData)
-                    memcpy(Engine.videoBuffer->pixels, videoVidData->pixels, videoVidData->width * videoVidData->height * sizeof(uint));
+                    memcpy(Engine.videoBuffer->pixels, videoVidData->pixels,
+                           videoVidData->width * videoVidData->height * sizeof(uint));
 #endif
 
-                if (videoVidData) {
                     THEORAPLAY_freeVideo(videoVidData);
                     videoVidData = NULL;
                 }
             }
+            // else: frame not due yet, or no frame available yet — fine,
+            //       we'll try again next tick.
 
             return VIDEOSTATUS_PLAYING_RSV; // still playing
         }
@@ -317,14 +330,15 @@ int QuitVideo()
 {
     StopVideoPlayback();
     ResumeSound();
-    return VIDEOSTATUS_PLAYING_OGV; // video finished
+    return VIDEOSTATUS_PLAYING_OGV; // video finished (signals engine to leave ENGINE_VIDEOWAIT)
 }
 
 void StopVideoPlayback()
 {
     if (videoPlaying == 1) {
-        // SDL_LockAudio works on Emscripten and is safer than
-        // SDL_PauseAudio (which would change the global pause state).
+        // SDL_LockAudio works correctly on Emscripten and is safer than
+        // SDL_PauseAudio (which would change the global pause state and
+        // could interfere with SFX / music resumption).
         SDL_LockAudio();
 
         if (videoSkipped && fadeMode >= 0xFF)
@@ -357,7 +371,11 @@ void SetupVideoBuffer(int width, int height)
     glBindTexture(GL_TEXTURE_2D, videoBuffer);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, videoVidData->width, videoVidData->height, GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+    if (videoVidData && videoVidData->pixels) {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        videoVidData->width, videoVidData->height,
+                        GL_RGBA, GL_UNSIGNED_BYTE, videoVidData->pixels);
+    }
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -365,7 +383,7 @@ void SetupVideoBuffer(int width, int height)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    if (!videoBuffer || !&videoBuffer || !videoVidData)
+    if (!videoBuffer)
         PrintLog("Failed to create video buffer!");
 #elif RETRO_USING_SDL1
     Engine.videoBuffer = SDL_CreateRGBSurface(0, width, height, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
@@ -385,12 +403,17 @@ void SetupVideoBuffer(int width, int height)
 void InitVideoBuffer(int width, int height)
 {
 #if !RETRO_USING_OPENGL && RETRO_USING_SDL2 && RETRO_SOFTWARE_RENDER
+    // Clear the YUV texture to black (Y=0, U=V=128) so the first
+    // frame doesn't flash garbage.
     int size  = width * height;
     int sizeh = (width / 2) * (height / 2);
     std::vector<Uint8> frame(size + 2 * sizeh);
     memset(frame.data(), 0, size);
     memset(frame.data() + size, 128, 2 * sizeh);
-    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr, frame.data(), width, frame.data() + size, width / 2, frame.data() + size + sizeh, width / 2);
+    SDL_UpdateYUVTexture(Engine.videoBuffer, nullptr,
+                         frame.data(), width,
+                         frame.data() + size, width / 2,
+                         frame.data() + size + sizeh, width / 2);
 #endif
 }
 

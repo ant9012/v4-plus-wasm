@@ -47,6 +47,10 @@ void OptionsMenu_Create(void *objPtr)
     SetStringToFont(self->buttons[OPTIONSMENU_BUTTON_SETTINGS]->text, strSettings, FONT_LABEL);
     SetStringToFont(self->buttons[OPTIONSMENU_BUTTON_ABOUT]->text, strAbout, FONT_LABEL);
     SetStringToFont(self->buttons[OPTIONSMENU_BUTTON_CREDITS]->text, strStaffCredits, FONT_LABEL);
+#ifdef __EMSCRIPTEN__
+    ushort strExitEngine[] = { 'E', 'X', 'I', 'T', ' ', 'E', 'N', 'G', 'I', 'N', 'E', '\0' };
+    SetStringToFont(self->buttons[OPTIONSMENU_BUTTON_EXIT]->text, strExitEngine, FONT_LABEL);
+#endif
 }
 void OptionsMenu_Main(void *objPtr)
 {

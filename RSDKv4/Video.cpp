@@ -235,6 +235,8 @@ void UpdateVideoFrame()
 
 int ProcessVideo()
 {
+    static bool frameRendered = false; // Track if we've rendered a frame this session
+    
     if (videoPlaying == 1) {
         CheckKeyPress(keyPress);
 
@@ -246,12 +248,8 @@ int ProcessVideo()
             PlaySfxByName("Menu Decide", false);
         }
 
-        // ── End-of-stream or skip-complete check ──
-        // THEORAPLAY_isDecoding() is the ONLY authoritative signal
-        // that the stream has ended.  A NULL from THEORAPLAY_getVideo()
-        // just means "no frame ready yet" (especially on WASM where
-        // the decoder runs in a Web Worker).
         if (!THEORAPLAY_isDecoding(videoDecoder) || (videoSkipped && fadeMode >= 0xFF)) {
+            frameRendered = false;
             return QuitVideo();
         }
 
@@ -261,6 +259,7 @@ int ProcessVideo()
             if (!videoVidData)
                 videoVidData = THEORAPLAY_getVideo(videoDecoder);
 
+            // Only render when we have a frame that's due
             if (videoVidData && (videoVidData->playms <= now)) {
                 if (vidFrameMS && ((now - videoVidData->playms) >= vidFrameMS)) {
                     const THEORAPLAY_VideoFrame *last = videoVidData;
@@ -275,9 +274,15 @@ int ProcessVideo()
                         videoVidData = last;
                 }
 
-                if (videoVidData) {
+                if (videoVidData && videoVidData->pixels) {
+                    // Clear framebuffer to black (letterbox/pillarbox areas)
+                    if (!frameRendered) {
+                        memset(Engine.frameBuffer, 0, GFX_LINESIZE * SCREEN_YSIZE * sizeof(ushort));
+                        frameRendered = true;
+                    }
+
                     // Render video frame into the software framebuffer.
-                    const byte *src = (const byte *)videoVidData->pixels;
+                    const uint32_t *src = (const uint32_t *)videoVidData->pixels;
 
                     // Calculate scaling to fit video into screen
                     float scaleX = (float)videoVidData->width / (float)SCREEN_XSIZE;
@@ -289,49 +294,46 @@ int ProcessVideo()
                     int destX = (SCREEN_XSIZE - destW) / 2;
                     int destY = (SCREEN_YSIZE - destH) / 2;
 
-                    // Clear framebuffer to black
-                    memset(Engine.frameBuffer, 0, GFX_LINESIZE * SCREEN_YSIZE * sizeof(ushort));
-
-                    // Blit scaled video frame as RGB565
+                    // Optimized blit - process as 32-bit RGBA directly
                     for (int y = 0; y < destH; y++) {
                         int srcY = (int)(y * scale);
                         if (srcY >= videoVidData->height)
                             srcY = videoVidData->height - 1;
+
+                        int dy = destY + y;
+                        if (dy < 0 || dy >= SCREEN_YSIZE)
+                            continue;
+
+                        ushort *dstRow = &Engine.frameBuffer[dy * GFX_LINESIZE + destX];
+                        const uint32_t *srcRow = &src[srcY * videoVidData->width];
 
                         for (int x = 0; x < destW; x++) {
                             int srcX = (int)(x * scale);
                             if (srcX >= videoVidData->width)
                                 srcX = videoVidData->width - 1;
 
-                            int srcIdx = (srcY * videoVidData->width + srcX) * 4; // RGBA
-                            byte r = src[srcIdx + 0];
-                            byte g = src[srcIdx + 1];
-                            byte b = src[srcIdx + 2];
+                            uint32_t rgba = srcRow[srcX];
+                            byte r = (rgba >> 0) & 0xFF;
+                            byte g = (rgba >> 8) & 0xFF;
+                            byte b = (rgba >> 16) & 0xFF;
 
-                            int dx = destX + x;
-                            int dy = destY + y;
-                            if (dx >= 0 && dx < GFX_LINESIZE && dy >= 0 && dy < SCREEN_YSIZE) {
-                                Engine.frameBuffer[dy * GFX_LINESIZE + dx] =
-                                    ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-                            }
+                            dstRow[x] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
                         }
                     }
 
                     THEORAPLAY_freeVideo(videoVidData);
                     videoVidData = NULL;
                 }
-                    THEORAPLAY_freeVideo(videoVidData);
-                    videoVidData = NULL;
-                }
             }
-            // If no new frame is ready, Engine.frameBuffer still has the last frame
-            // so it will be re-displayed without flickering
+            // else: No new frame yet — Engine.frameBuffer retains the last frame
 
             return VIDEOSTATUS_PLAYING_RSV;
         }
     }
+    else {
+        frameRendered = false;
+    }
 
-    return VIDEOSTATUS_NOTPLAYING;
     return VIDEOSTATUS_NOTPLAYING;
 }
 

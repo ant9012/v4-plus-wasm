@@ -3,9 +3,9 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
-
+#ifdef __EMSCRIPTEN
 extern "C" void Mono_WakeAudio();
-
+#endif
 #if !RETRO_USE_ORIGINAL_CODE
 bool usingCWD        = false;
 bool engineDebugMode = false;
@@ -51,7 +51,9 @@ bool ProcessEvents()
 #if RETRO_USING_SDL1 || RETRO_USING_SDL2
     while (SDL_PollEvent(&Engine.sdlEvents)) {
 
+        #ifdef __EMSCRIPTEN__
         Mono_WakeAudio();
+        #endif
 
 
         UpdateCursorVisibility(&Engine.sdlEvents);
@@ -128,9 +130,9 @@ bool ProcessEvents()
                 }
                 break;
             case SDL_MOUSEBUTTONDOWN:
-            #ifdef __EMSCRIPTEN__
+    #ifdef __EMSCRIPTEN__
     // Trigger the audio wake-up on the first user interaction
-    Mono_WakeAudio(); 
+    Mono_WakeAudio();
     #endif
                 if (touches <= 1) { // Touch always takes priority over mouse
                     switch (Engine.sdlEvents.button.button) {
@@ -385,13 +387,13 @@ void RetroEngine::Init()
 
     printf("--- INIT STEP 3: Attempting to LoadGameConfig ---\n"); fflush(stdout);
     if (LoadGameConfig("Data/Game/GameConfig.bin")) {
-        
+
         printf("--- INIT STEP 4: GameConfig loaded! Attempting InitRenderDevice ---\n"); fflush(stdout);
         if (InitRenderDevice()) {
-            
+
             printf("--- INIT STEP 5: RenderDevice loaded! Attempting InitAudioPlayback ---\n"); fflush(stdout);
             if (InitAudioPlayback()) {
-                
+
                 printf("--- INIT STEP 6: Audio loaded! Engine successfully booted. ---\n"); fflush(stdout);
                 InitFirstStage();
                 ClearScriptData();
@@ -632,7 +634,7 @@ void RetroEngine::Init()
     // "error message"
     if (!running) {
         printf("--- CRITICAL INIT FAILURE: Engine.running is false at the end of Init! Check the previous CRITICAL ERROR. ---\n"); fflush(stdout);
-        
+
         char rootDir[0x80];
         char pathBuffer[0x80];
 
@@ -684,13 +686,13 @@ void RetroEngine::RunFrame()
     static int lastFPS = Engine.refreshRate;
 
     #if !RETRO_USE_ORIGINAL_CODE
-    
+
     // Disable the internal C++ frame limiter on WebAssembly!
     // The browser's requestAnimationFrame already paces the game perfectly to 60fps.
     #ifndef __EMSCRIPTEN__
     curTicks = SDL_GetPerformanceCounter();
     if (curTicks < prevTicks + targetFreq)
-        return; 
+        return;
     prevTicks = curTicks;
     #endif
 
@@ -807,19 +809,19 @@ void RetroEngine::RunFrame()
     }
 
    #ifdef __EMSCRIPTEN__
-    // We must manually trigger the engine's internal save functions, 
+    // We must manually trigger the engine's internal save functions,
     // because the browser will never let the engine exit cleanly!
     static int syncTimer = 0;
     syncTimer++;
-    
+
     // Save every 180 frames (Every 3 seconds)
     if (syncTimer >= 180) {
         syncTimer = 0;
-        
+
         // 1. Force the engine to write SData.bin, UData.bin, and settings.ini to the RAM Disk
         WriteUserdata();
         WriteSettings();
-        
+
         // 2. Force Emscripten to flush the RAM Disk down into the browser's permanent IndexedDB
         // Using emscripten_run_script with quotes prevents the C++ compiler from crashing!
         emscripten_run_script(
@@ -853,7 +855,7 @@ void RetroEngine::Run()
 
 #ifdef __EMSCRIPTEN__
     printf("--- KICKING OFF EMSCRIPTEN WEB LOOP ---\n"); fflush(stdout);
-    
+
     // Start the browser loop!
     // Arg 2 (0) means sync to monitor refresh rate (requestAnimationFrame)
     // Arg 3 (1) means simulate an infinite loop to prevent C++ from safely exiting
@@ -883,8 +885,10 @@ void RetroEngine::Run()
     #if RETRO_USING_SDL1 || RETRO_USING_SDL2
     SDL_Quit();
     #endif
+    #ifdef __EMSCRIPTEN
     emscripten_cancel_main_loop();
-    EM_ASM_({ window.location.href = window.location.href.substring(0, window.location.href.lastIndexOf('/')); }); 
+    EM_ASM_({ window.location.href = window.location.href.substring(0, window.location.href.lastIndexOf('/')); });
+    #endif
 
 #endif // __EMSCRIPTEN__
 }

@@ -79,7 +79,7 @@ int InitAudioPlayback()
 
 #if RETRO_USING_SDL2
     int allowedChanges = 0;
-    
+
     if ((audioDevice = SDL_OpenAudioDevice(nullptr, 0, &want, &audioDeviceFormat, allowedChanges)) > 0) {
         audioEnabled = true;
         SDL_PauseAudioDevice(audioDevice, 0);
@@ -1026,7 +1026,7 @@ void ResumeAllVoice()
         if (sfxChannels[i].sfxID >= 0 && sfxChannels[i].isVoice)
             sfxChannels[i].paused = false;
     }
-    
+
     UnlockAudioDevice();
 }
 void PauseAnySfx()
@@ -1080,7 +1080,7 @@ void SetVoiceAttributes(int sfx, int loopCount, sbyte pan)
     sfxInfo->sfxID       = sfx;
     UnlockAudioDevice();
 }
-void CheckAudioContext() 
+void CheckAudioContext()
 {
     if (audioEnabled) return;
 
@@ -1101,6 +1101,8 @@ void CheckAudioContext()
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
+
 extern "C" {
     // This is the function we will call from our input loop
     EMSCRIPTEN_KEEPALIVE void Mono_WakeAudio() {
@@ -1111,7 +1113,7 @@ extern "C" {
             #else
                 SDL_PauseAudio(0);
             #endif
-            
+
             // Direct JavaScript Resume
             MAIN_THREAD_EM_ASM({
                 if (window.SDL2 && SDL2.audioContext && SDL2.audioContext.state === 'suspended') {
@@ -1120,8 +1122,9 @@ extern "C" {
                     });
                 }
             });
-            
+
             audioEnabled = true; // Mark as enabled once the user has clicked
         }
     }
 }
+#endif

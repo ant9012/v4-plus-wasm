@@ -3,7 +3,7 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
-#ifdef __EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 extern "C" void Mono_WakeAudio();
 #endif
 #if !RETRO_USE_ORIGINAL_CODE
